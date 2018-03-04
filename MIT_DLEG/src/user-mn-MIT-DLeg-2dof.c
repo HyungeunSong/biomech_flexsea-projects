@@ -51,8 +51,8 @@
 uint8_t mitDlegInfo[2] = {PORT_RS485_2, PORT_RS485_2};
 
 //SAFETY FLAGS
-static int8_t ANGLE_LIMIT_FLAG = 0;
-static int8_t FORCE_LIMIT_FLAG = 0;
+static int8_t isAngleOutOfRange = 0;
+static int8_t isForceOutOfRange = 0;
 
 //****************************************************************************
 // Public Function(s)
@@ -74,6 +74,7 @@ void MIT_DLeg_fsm_1(void)
 
     //Increment time (1 tick = 1ms)
     time++;
+    static int16_t test = 0;
 
 	//begin safety check
     if (safetyFailure()) {
@@ -84,11 +85,17 @@ void MIT_DLeg_fsm_1(void)
     }
 	//end safety check
 
+	rigid1.mn.genVar[0] = state;//Check variable
+	rigid1.mn.genVar[1] = time;
+	//	rigid1.mn.genVar[1] = rigid1.ex.strain;
+//	rigid1.mn.genVar[2] = *(rigid1.ex.enc_ang);
+
+
 	switch(state)
 	{
 		case -2:
 			//Same power-on delay as FSM2:
-			if(time >= AP_FSM2_POWER_ON_DELAY)
+			if(time >= AP_FSM2_POWER_ON_DELAY+3000)
 			{
 				state = -1;
 				time = 0;
@@ -97,10 +104,12 @@ void MIT_DLeg_fsm_1(void)
 			break;
 
 		case -1:
-			if(findPoles()) {
-				state = 0;
-				time = 0;
-			}
+			//turned off for testing without Motor usage
+//			if(findPoles()) {
+//				state = 0;
+//				time = 0;
+//			}
+			state = 0;
 
 			break;
 
@@ -112,7 +121,15 @@ void MIT_DLeg_fsm_1(void)
 		case 1:
 			//Pick one of those demos:
 			//openSpeedFSM();
-			twoPositionFSM();
+//			twoPositionFSM();
+			test = getJointAngle();
+//			test = calc_linearActuatorMomentArm( test );
+			rigid1.mn.genVar[4] = rigid1.ex.strain;
+			rigid1.mn.genVar[5] = getJointAngle();
+			rigid1.mn.genVar[6] = getAxialForce();
+			rigid1.mn.genVar[7] = 1000*getLinkageMomentArm( test );
+			rigid1.mn.genVar[8] = getJointTorque();
+
 			break;
 
         default:
@@ -143,7 +160,8 @@ int8_t safetyFailure(void) {
 	//check torque sensor
 
 	//check motor and board temps
-	return 1;
+	//return 1;
+	return 0;	//return 0 if everything checks out. not yet checking anything!
 }
 
 // Output joint angle in degrees, measured from joint zero
@@ -153,6 +171,8 @@ float getJointAngle(void)
 	static int8_t jointAngleState = -1;
 	static int32_t jointAngleCnts = 0;
 	static float jointAngle = 0;
+	static int32_t jointAngleCntsAbsolute = 0;
+	static float jointAngleAbsolute = 0;
 
 	switch(jointAngleState)
 		{
@@ -161,19 +181,29 @@ float getJointAngle(void)
 				timer++;
 				if(timer > 25)
 				{
-					jointAngleCnts = *(rigid1.ex.enc_ang);
+					jointAngleCnts = *(rigid1.ex.joint_ang);
 					jointAngleState = 0;
 				}
 				break;
 			case 0:
-				jointAngleCnts = JOINT_ENC_DIR * ( JOINT_ZERO_OFFSET - *(rigid1.ex.enc_ang) ); //todo: check this directionality
-				jointAngle = jointAngleCnts / JOINT_CPR * 360.0;
+				//Configuration orientation
+				jointAngleCnts = ( JOINT_ZERO + JOINT_ENC_DIR * (*(rigid1.ex.joint_ang)) );
+				jointAngle = ( (float) jointAngleCnts)  * 360/JOINT_CPR;
+
+				//Absolute orientation to evaluate against soft-limits
+				jointAngleCntsAbsolute = ( JOINT_ZERO_ABS + JOINT_ENC_DIR * (*(rigid1.ex.joint_ang)) );
+				jointAngleAbsolute = ( (float) jointAngleCnts)  * 360/JOINT_CPR;
 
 				//Check angle limits, raise flag for safety check
-				if( jointAngle < JOINT_MIN || jointAngle > JOINT_MAX)
+				if( jointAngleAbsolute < JOINT_MIN || jointAngleAbsolute > JOINT_MAX)
 				{
-					ANGLE_LIMIT_FLAG = 1;
+					isAngleOutOfRange = 1;
 				}
+				else
+				{
+					isAngleOutOfRange = 0;
+				}
+
 				break;
 			default:
 				//do nothing, if something went wrong.
@@ -189,16 +219,15 @@ float getAxialForce(void)
 	static uint32_t timer = 0;
 	static uint16_t strainReading = 0;
 	static uint16_t tareOffset = 0;
-	static int16_t strainMeasBias = 32768;	// centered around 2.5V, or 2^16/2 ticks.
+//	static uint16_t strainMeasBias = 32768;	// centered around 2.5V, or 2^16/2 ticks.
 	static float axialForce = 0;
 
 	strainReading = (rigid1.ex.strain);
 
 	//Check for over force reading, set flag, and exit.
-	if (strainReading >= MAX_FORCE_TICKS || strainReading <= MIN_FORCE_TICKS)
+	if (strainReading >= FORCE_MAX_TICKS || strainReading <= FORCE_MIN_TICKS)
 	{
-		FORCE_LIMIT_FLAG = 1;
-		return MAX_FORCE;
+		isForceOutOfRange = 1;
 	}
 
 	switch(tareState)
@@ -209,36 +238,36 @@ float getAxialForce(void)
 			if(timer > 250)
 			{
 				strainReading = (rigid1.ex.strain);
-				tareOffset = (rigid1.ex.strain);
-
+				tareOffset = strainReading;
 				tareState = 0;
 			}
 			break;
 		case 0:
-			axialForce = ( strainReading - strainMeasBias - tareOffset ) * FORCE_PER_TICK;	// bias = 2.5V, or 32768 ticks
+//			axialForce =  ( strainReading - strainMeasBias - tareOffset ) * FORCE_PER_TICK;	// bias = 2.5V, or 32768 ticks
+			axialForce =  FORCE_DIR * ( strainReading - tareOffset ) * FORCE_PER_TICK;	// Looks correct with simple weight, need to test with a scale
 			break;
 		default:
 			//problem occurred
 			break;
 	}
+
 	return axialForce;
 }
 
 // Linear Actuator Actual Moment Arm,
-// input(theta [deg] )
+// input( jointAngle, theta [deg] )
 // return moment arm projected length  [m]
-float calc_linearActuatorMomentArm(float theta)
+float getLinkageMomentArm(float theta)
 {
-	static float theta_r = 0;
-	theta_r = theta * M_PI / 180;
-	static float A = 0, c = 0, r = 0, C_ang = 0;
 	static float a = 0, b = 0, T = 0, F = 0;
+	static float A = 0, c = 0, r = 0, C_ang = 0;
+	static float theta_r = 0;
+	theta_r = theta * M_PI / 180;	// convert deg to radians.
 
-	//Do calculations in m
-    static float t = 0.047; 	// tibial offset
-    static float t_k = 0.140; 	// offset from knee along tibia
-    static float f = 0.039;  	// femur offset
-    static float f_k = 0.018;	// offset from knee along femur
+    static const float t = 47; 		// [mm] tibial offset
+    static const float t_k = 140; 	// [mm] offset from knee along tibia
+    static const float f = 39;  	// [mm] femur offset
+    static const float f_k = 18;	// [mm] offset from knee along femur
 
     a = sqrt( t*t + t_k*t_k);
     b = sqrt( f*f + f_k*f_k);
@@ -251,14 +280,28 @@ float calc_linearActuatorMomentArm(float theta)
     A = acos( ( a*a - ( c*c + b*b ) ) / ( -2 * b * c ) );
     r = b * sin(A);
 
-    return r;
+    return r/1000;
 }
+
+/*
+ *  Determine torque at joint due to moment arm and axial force
+ *  input:	moment arm [m]
+ *  return: 	joint torque [Nm]
+ */
+float getJointTorque()
+{
+	return getLinkageMomentArm( getJointAngle() ) * getAxialForce();
+}
+
 
 int8_t findPoles(void) {
 	static uint32_t timer = 0;
 	static int8_t polesState = 0;
 
 	timer++;
+	rigid1.mn.genVar[2] = polesState;
+	rigid1.mn.genVar[3] = timer;
+
 
 	switch(polesState) {
 		case 0:

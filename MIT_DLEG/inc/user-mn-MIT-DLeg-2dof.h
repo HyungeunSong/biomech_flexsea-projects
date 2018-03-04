@@ -54,6 +54,9 @@ void MIT_DLeg_fsm_2(void);
 int8_t safetyFailure(void);
 int8_t findPoles(void);
 float getJointAngle(void);
+float getAxialForce(void);
+float getLinkageMomentArm(float);
+float getJointTorque(void);
 void openSpeedFSM(void);
 void twoPositionFSM(void);
 
@@ -65,31 +68,51 @@ void twoPositionFSM(void);
 //measured from nominal joint configuration, in degrees
 #define IS_ANKLE
 //#define IS_KNEE
-#define JOINT_ZERO_OFFSET 	0 		// Unit = ticks, Absolute encoder Zero Offset based on system calibration.
-#define JOINT_ENC_DIR 		1		// CW = 1, CCW = -1
-#define JOINT_CPR 			16384	// Counts per recolution
-//#define PI					3.141592F	// you know me!
+#define DEVICE_TF08_A01			// Define specific actuator configuration.
+//#define DEVICE_TF08_A02			// Define specific actuator configuration.
 
-//Joint software limits
+
+#ifdef DEVICE_TF08_A01
+#define JOINT_ZERO_OFFSET 	0 		// [deg] Joint Angle offset, CW rotation, based on Setup, ie. TEDtalk flexfoot angle = 20, fittings, etc.
+#define JOINT_ENC_DIR 		-1		// CW = 1 (knee orientation), CCW = -1 (ankle orientation)
+#define JOINT_CPR 			16384	// Counts per revolution
+#define JOINT_MIN_ABS		10967	// Absolute encoder at MIN (Max dorsiflexion, 30Deg)
+#define JOINT_MAX_ABS		5444	// Absolute encoder reading at MAX (Max Plantarflexion, 90Deg)
+#define JOINT_ZERO_ABS		JOINT_MIN_ABS - 30 * JOINT_CPR/360 	// Absolute reading of Actuator Zero as designed in CAD
+#define JOINT_ZERO 			JOINT_ZERO_ABS + JOINT_ENC_DIR * JOINT_ZERO_OFFSET *JOINT_CPR/360 		// counts for actual angle.
+#endif
+
+#ifdef DEVICE_TF08_A02
+#define JOINT_ZERO_OFFSET 	20 		// [deg] Joint Angle offset, CW rotation, based on Setup, ie. TEDtalk flexfoot angle, fittings, etc.
+#define JOINT_ENC_DIR 		-1		// CW = 1 (knee orientation), CCW = -1 (ankle orientation)
+#define JOINT_CPR 			16384	// Counts per revolution
+#define JOINT_MIN_ABS		10967	// Absolute encoder at MIN (Max dorsiflexion, 30Deg)
+#define JOINT_MAX_ABS		5444	// Absolute encoder reading at MAX (Max Flexion, 90Deg)
+#define JOINT_ZERO_ABS		JOINT_MIN_ABS - 30 * JOINT_CPR/360 	// Absolute reading of Actuator Zero as designed in CAD
+#define JOINT_ZERO 			JOINT_ZERO_ABS + JOINT_ENC_DIR * JOINT_ZERO_OFFSET *JOINT_CPR/360 		// counts for actual angle.
+#endif
+
+//Joint software limits [Degrees]
 #ifdef IS_ANKLE
-#define JOINT_MIN 			-10  	//Actuator physical limit min = 30deg dorsiflexion
-#define JOINT_MAX 			10   	//Actuator physical limit  max = 90deg plantarflex
+#define JOINT_MIN 			-20  	// [deg] Actuator physical limit min = -30deg dorsiflexion
+#define JOINT_MAX 			60   	// [deg] Actuator physical limit  max = +90deg plantarflex
 #endif
 
 #ifdef IS_KNEE
-#define JOINT_MIN 			-20		//Actuator physical limit min = 30deg extension
-#define JOINT_MAX 			20		//Actuator physical limit max = 90deg flexion
+#define JOINT_MIN 			-20		// [deg] Actuator physical limit min = -30deg extension
+#define JOINT_MAX 			20		// [deg] Actuator physical limit max = +90deg flexion
 #endif
 
 //Force Sensor
-#define STRAIN_GAIN 		202.6	//Defined by R23 on Execute, better would be G=250 to max range of ADC
-#define EXCITATION			5		// Excitation Voltage
-#define STRAIN_BIAS			2.5		// Strain measurement Bias
-#define	RATED_OUTPUT		0.002	// 2mV/V
-#define MAX_FORCE			4448	//Newtons, for LCM300 load cell
-#define MAX_FORCE_TICKS		(STRAIN_GAIN * EXCITATION * RATED_OUTPUT + STRAIN_BIAS)/5 * 65536	// max ticks expected
-#define MIN_FORCE_TICKS		(STRAIN_BIAS - STRAIN_GAIN * EXCITATION * RATED_OUTPUT)/5 * 65536	// min ticks expected
-#define FORCE_PER_TICK		2*MAX_FORCE / (MAX_FORCE_TICKS - MIN_FORCE_TICKS)	// Newtons/Tick
+#define FORCE_DIR			1		// Direction of positive force, Plantar Flexion is (+)
+#define FORCE_STRAIN_GAIN 	202.6	// Defined by R23 on Execute, better would be G=250 to max range of ADC
+#define FORCE_STRAIN_BIAS	2.5		// Strain measurement Bias
+#define FORCE_EXCIT			5		// Excitation Voltage
+#define	FORCE_RATED_OUTPUT	0.002	// 2mV/V, Rated Output
+#define FORCE_MAX			4448	// Newtons, for LCM300 load cell
+#define FORCE_MAX_TICKS		(FORCE_STRAIN_GAIN * FORCE_EXCIT * FORCE_RATED_OUTPUT + FORCE_STRAIN_BIAS)/5 * 65536	// max ticks expected
+#define FORCE_MIN_TICKS		(FORCE_STRAIN_BIAS - FORCE_STRAIN_GAIN * FORCE_EXCIT * FORCE_RATED_OUTPUT)/5 * 65536	// min ticks expected
+#define FORCE_PER_TICK		2*FORCE_MAX / (FORCE_MAX_TICKS - FORCE_MIN_TICKS)	// Newtons/Tick
 
 //safety limits
 #define MOTOR_TEMP_LIMIT 50
