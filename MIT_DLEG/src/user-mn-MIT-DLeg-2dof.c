@@ -122,13 +122,25 @@ void MIT_DLeg_fsm_1(void)
 			//Pick one of those demos:
 			//openSpeedFSM();
 //			twoPositionFSM();
+
+			act1.jointAngle = getJointAngle();
+			//todo: calc jointVel;
+			act1.linkageMomentArm = getLinkageMomentArm( act1.jointAngle );
+			act1.axialForce = getAxialForce();
+			act1.jointTorque = getJointTorque();
+
+			rigid1.mn.genVar[5] = act1.jointAngle;
+			rigid1.mn.genVar[6] = act1.axialForce;
+			rigid1.mn.genVar[7] = 1000*act1.linkageMomentArm;
+			rigid1.mn.genVar[8] = act1.jointTorque;
+
 			test = getJointAngle();
-//			test = calc_linearActuatorMomentArm( test );
-			rigid1.mn.genVar[4] = rigid1.ex.strain;
-			rigid1.mn.genVar[5] = getJointAngle();
-			rigid1.mn.genVar[6] = getAxialForce();
-			rigid1.mn.genVar[7] = 1000*getLinkageMomentArm( test );
-			rigid1.mn.genVar[8] = getJointTorque();
+//			rigid1.mn.genVar[4] = rigid1.ex.strain;
+//			rigid1.mn.genVar[5] = getJointAngle();
+//			rigid1.mn.genVar[6] = getAxialForce();
+//			rigid1.mn.genVar[7] = 1000*getLinkageMomentArm( test );
+//			rigid1.mn.genVar[8] = getJointTorque();
+
 
 			break;
 
@@ -197,7 +209,9 @@ float getJointAngle(void)
 				//Check angle limits, raise flag for safety check
 				if( jointAngleAbsolute < JOINT_MIN || jointAngleAbsolute > JOINT_MAX)
 				{
-					isAngleOutOfRange = 1;
+					isAngleOutOfRange = 1;		//these are all redundant, choose if we want the struct thing.
+					act1.safetyFlag = 1;
+					act1.jointAngleLimit = 1;
 				}
 				else
 				{
@@ -227,7 +241,9 @@ float getAxialForce(void)
 	//Check for over force reading, set flag, and exit.
 	if (strainReading >= FORCE_MAX_TICKS || strainReading <= FORCE_MIN_TICKS)
 	{
-		isForceOutOfRange = 1;
+		isForceOutOfRange = 1;			// these are all redundant.
+		act1.jointTorqueLimit = 1;
+		act1.safetyFlag = 1;
 	}
 
 	switch(tareState)
