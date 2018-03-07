@@ -358,7 +358,8 @@ float getAxialForce(void)
 
 	strainReading = (rigid1.ex.strain);
 
-//	//Check for over force reading, set flag, and exit.
+//	//moved this to jointTorque
+	//Check for over force reading, set flag, and exit.
 //	if (strainReading >= FORCE_MAX_TICKS || strainReading <= FORCE_MIN_TICKS)
 //	{
 //		isForceOutOfRange = 1;			// these are all redundant.
@@ -431,11 +432,8 @@ float getJointTorque()
 {
 	float *p;
 	static float torque = 0;
-	p = getJointAngleKinematic();
+	p = getJointAngleKinematic();	//need the pointer to get to angle, at index 0
 
-
-
-//	return getLinkageMomentArm( * getJointAngle() ) * getAxialForce();
 	torque = getLinkageMomentArm( * ( p + 0 ) ) * getAxialForce();
 
 	if(torque >= TORQUE_LIMIT || torque <= -TORQUE_LIMIT)
@@ -450,6 +448,49 @@ float getJointTorque()
 	return torque;
 }
 
+/* WORK IN PROGRESS
+ * Calculate required motor torque, based on joint torque
+ * input:	joint angle (instantaneous value)
+ * return Motor Torque request, or maybe current
+ */
+//void jointToMotorTransform(struct act_s *actx, float tor_d)
+//{
+//	tor_d // torque desired at the load
+//	N_ETA // transmission efficiency
+//	N = actx->linkageMomentArm * N_SCREW;
+//	//simplest
+//	tor_m =  actx->axialForce / ( N );
+//
+//	//more correctly, include spring dynamics
+//	xs = tor_l/Ks;
+//
+///* FROM MATLAB CODE
+// * Determine motor displacement due to desired load displacement, and spring
+// *  Fs = tau_s ./ var.LinearActGeometry.momentArm;  % linear force at spring
+//        Xs = Fs./var.Ks;        % Displacement of Spring
+//        dXs = ddt(Xs, t, Load.cyclic);
+//        X_l = var.LinearActGeometry.C0 - C_l; % calulate linear motion of screw from initial max extension
+//%         X_l = C_l - var.LinearActGeometry.C0; % calulate linear motion of screw from initial max extension
+//        N_effective = var.N .* var.LinearActGeometry.momentArm;
+//        theta_m = var.N.*(Xs + X_l); % TRY it out, displacement due to spring deflection is only screw reduction, output is total gear reduction
+// *
+// * tau_m = 1/var.N .* Fs;  % motor torque is due to force on screw
+// *
+// *
+// * calc_electricVector(motorVectors, objectiveStruct)
+//    Motor = getfield(objectiveStruct, 'Motor');
+//    %% motor response : electrical
+//    tau_m = motorVectors.tau_m;
+//    dtheta_m = motorVectors.dtheta_m;
+//    ddtheta_m = motorVectors.ddtheta_m;
+//
+//    I = 1/Motor.Kt .* ( tau_m + (objectiveStruct.Motor.J + objectiveStruct.Trans.Jtrans).*ddtheta_m + objectiveStruct.Motor.B .* dtheta_m );
+//    dI = ddt(I, objectiveStruct.Load.time, objectiveStruct.Load.cyclic);
+//    V = I.*(Motor.R) + dI.*(Motor.L/1000) + (Motor.Kt).*dtheta_m;
+// */
+//
+//
+//}
 
 // not workign yet
 void biomControlTorque(float theta_set, float k1, float k2, float b)

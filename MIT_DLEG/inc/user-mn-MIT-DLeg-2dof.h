@@ -80,6 +80,7 @@ float getLinkageMomentArm(float);
 float getJointTorque(void);
 void updateSensorValues(struct act_s *actx);
 void biomControlTorque(float theta_set, float k1, float k2, float b);
+void jointToMotorTransform(struct act_s *actx, float tor_d);
 
 void openSpeedFSM(void);
 void twoPositionFSM(void);
@@ -121,6 +122,15 @@ void twoPositionFSM(void);
 #define FORCE_MAX_TICKS		( (FORCE_STRAIN_GAIN * FORCE_EXCIT * FORCE_RATED_OUTPUT + FORCE_STRAIN_BIAS)/5 * 65535 )	// max ticks expected
 #define FORCE_MIN_TICKS		( (FORCE_STRAIN_BIAS - FORCE_STRAIN_GAIN * FORCE_EXCIT * FORCE_RATED_OUTPUT)/5 * 65535 )	// min ticks expected
 #define FORCE_PER_TICK		( ( 2 * FORCE_MAX  ) / (FORCE_MAX_TICKS - FORCE_MIN_TICKS)	)// Newtons/Tick
+
+//Transmission
+#ifdef IS_ANKLE			//UPDATE THIS WITH NEW SCREWs ankle = 0.002
+#define N_SCREW				(2*M_PI/0.005)	// Ballscrew ratio
+#define N_ETA				0.9		// Transmission efficiency
+#endif
+#ifdef IS_KNEE
+#define N_SCREW				(2*M_PI/0.005)	// Ballscrew ratio
+#endif
 
 #endif
 
