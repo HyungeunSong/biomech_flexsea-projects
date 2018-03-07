@@ -49,12 +49,13 @@ struct act_s
 {
 	float jointAngle;
 	float jointAngleVel;
+	float jointAngleAcc;
 	float linkageMomentArm;
 	float axialForce;
 	float jointTorque;
 	int8_t safetyFlag;			// todo: consider if we want these flags here.
-	int8_t jointAngleLimit;		// has hit a joint limit
-	int8_t jointTorqueLimit;	// has hit a joint limit
+	int16_t regTemp;		// regulate temperature
+	int16_t motTemp;		// motor temperature
 };
 
 //****************************************************************************
@@ -71,12 +72,14 @@ void MIT_DLeg_fsm_2(void);
 int8_t safetyFailure(void);
 int8_t findPoles(void);
 
-float getJointAngle(void);
+//float getJointAngle(void);
+float * getJointAngleKinematic(void);
 float getJointAngularVelocity(void);
 float getAxialForce(void);
 float getLinkageMomentArm(float);
 float getJointTorque(void);
 void updateSensorValues(struct act_s *actx);
+void biomControlTorque(float theta_set, float k1, float k2, float b);
 
 void openSpeedFSM(void);
 void twoPositionFSM(void);
@@ -117,7 +120,7 @@ void twoPositionFSM(void);
 #define FORCE_MAX			4448	// Newtons, for LCM300 load cell
 #define FORCE_MAX_TICKS		( (FORCE_STRAIN_GAIN * FORCE_EXCIT * FORCE_RATED_OUTPUT + FORCE_STRAIN_BIAS)/5 * 65535 )	// max ticks expected
 #define FORCE_MIN_TICKS		( (FORCE_STRAIN_BIAS - FORCE_STRAIN_GAIN * FORCE_EXCIT * FORCE_RATED_OUTPUT)/5 * 65535 )	// min ticks expected
-#define FORCE_PER_TICK		( 2*FORCE_MAX / (FORCE_MAX_TICKS - FORCE_MIN_TICKS)	)// Newtons/Tick
+#define FORCE_PER_TICK		( ( 2 * FORCE_MAX  ) / (FORCE_MAX_TICKS - FORCE_MIN_TICKS)	)// Newtons/Tick
 
 #endif
 
@@ -127,21 +130,32 @@ void twoPositionFSM(void);
 
 //Joint software limits [Degrees]
 #ifdef IS_ANKLE
-#define JOINT_MIN 			-20  	// [deg] Actuator physical limit min = -30deg dorsiflexion
-#define JOINT_MAX 			60   	// [deg] Actuator physical limit  max = +90deg plantarflex
+#define JOINT_MIN 			-20  * (ANG_UNIT)/360	// [deg] Actuator physical limit min = -30deg dorsiflexion
+#define JOINT_MAX 			60   * (ANG_UNIT)/360	// [deg] Actuator physical limit  max = +90deg plantarflex
 #endif
 
 #ifdef IS_KNEE
-#define JOINT_MIN 			-20		// [deg] Actuator physical limit min = -30deg extension
-#define JOINT_MAX 			20		// [deg] Actuator physical limit max = +90deg flexion
+#define JOINT_MIN 			-20	* (ANG_UNIT)/360	// [deg] Actuator physical limit min = -30deg extension
+#define JOINT_MAX 			20	* (ANG_UNIT)/360	// [deg] Actuator physical limit max = +90deg flexion
 #endif
 
-
+// Motor Parameters
+#define MOT_KT 			0.0951		// Kt value
+#define MOT_L			0.068		// mH
 
 //safety limits
+#define PCB_TEMP_LIMIT   50
 #define MOTOR_TEMP_LIMIT 50
 #define TORQUE_LIMIT	 50
 #define CURRENT_LIMIT    10
+
+enum {
+	SAFETY_OKAY		=		0,
+	SAFETY_ANGLE	=		1,
+	SAFETY_TORQUE	=		2,
+	SAFETY_FLEX_TEMP=		3,
+	SAFETY_TEMP		=		4,
+};
 
 #define SECONDS			1000
 
