@@ -162,18 +162,6 @@ struct dual_utt_s
 	int16_t val[2][10];
 };
 
-// Actuator structure to track current values for the TF08 style actuator
-struct actTF0x
-{
-	float jointAngle;
-	float jointVel;
-	float linkageMomentArm;
-	float axialForce;
-	float jointTorque;
-	int8_t safetyFlag;			// todo: consider if we want these flags here.
-	int8_t jointAngleLimit;		// has hit a joint limit
-	int8_t jointTorqueLimit;	// has hit a joint limit
-};
 
 //****************************************************************************
 // Shared variable(s)
@@ -184,7 +172,7 @@ extern int16_t globvar[10];
 extern struct rigid_s rigid1, rigid2;
 extern int16_t globvar[10];
 extern struct dual_utt_s utt;
-extern struct actTF0x act1;
+
 
 //****************************************************************************
 // Prototype(s):

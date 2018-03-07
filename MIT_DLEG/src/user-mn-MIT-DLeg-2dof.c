@@ -54,6 +54,10 @@ uint8_t mitDlegInfo[2] = {PORT_RS485_2, PORT_RS485_2};
 static int8_t isAngleOutOfRange = 0;
 static int8_t isForceOutOfRange = 0;
 
+struct act_s act1;		//actuator sensor structure.
+
+struct diffarr_s jnt_ang_clks;		//maybe used for velocity and accel calcs.
+
 //****************************************************************************
 // Public Function(s)
 //****************************************************************************
@@ -72,6 +76,9 @@ void MIT_DLeg_fsm_1(void)
 
     static uint32_t time = 0, state = -2;
 
+//    struct act_s *ac1 = &act1;	// make a pointer to act1 structure.
+
+
     //Increment time (1 tick = 1ms)
     time++;
     static int16_t test = 0;
@@ -87,9 +94,6 @@ void MIT_DLeg_fsm_1(void)
 
 	rigid1.mn.genVar[0] = state;//Check variable
 	rigid1.mn.genVar[1] = time;
-	//	rigid1.mn.genVar[1] = rigid1.ex.strain;
-//	rigid1.mn.genVar[2] = *(rigid1.ex.enc_ang);
-
 
 	switch(state)
 	{
@@ -123,18 +127,17 @@ void MIT_DLeg_fsm_1(void)
 			//openSpeedFSM();
 //			twoPositionFSM();
 
-			act1.jointAngle = getJointAngle();
-			//todo: calc jointVel;
-			act1.linkageMomentArm = getLinkageMomentArm( act1.jointAngle );
-			act1.axialForce = getAxialForce();
-			act1.jointTorque = getJointTorque();
+			//test passing passing reference
+			updateSensorValues( &act1 );
 
-			rigid1.mn.genVar[5] = act1.jointAngle;
+			rigid1.mn.genVar[4] = act1.safetyFlag;
+			rigid1.mn.genVar[5] = act1.jointAngle * 360/(ANG_UNIT);
 			rigid1.mn.genVar[6] = act1.axialForce;
-			rigid1.mn.genVar[7] = 1000*act1.linkageMomentArm;
+			rigid1.mn.genVar[7] = 1000*act1.linkageMomentArm; //mm
 			rigid1.mn.genVar[8] = act1.jointTorque;
+			rigid1.mn.genVar[9] = act1.jointAngleVel * 360/(ANG_UNIT);
 
-			test = getJointAngle();
+//			test = getJointAngle();
 //			rigid1.mn.genVar[4] = rigid1.ex.strain;
 //			rigid1.mn.genVar[5] = getJointAngle();
 //			rigid1.mn.genVar[6] = getAxialForce();
@@ -176,6 +179,29 @@ int8_t safetyFailure(void) {
 	return 0;	//return 0 if everything checks out. not yet checking anything!
 }
 
+/*
+ * Collect all sensor values and update the actuator structure.
+ */
+void updateSensorValues(struct act_s *actx)
+{
+	actx->jointAngle = getJointAngle();
+	//todo: calc jointVel;
+	actx->jointAngleVel = getJointAngularVelocity();
+	actx->linkageMomentArm = getLinkageMomentArm( actx->jointAngle );
+	actx->axialForce = getAxialForce();
+	actx->jointTorque = getJointTorque();
+
+	if( isAngleOutOfRange )
+	{
+		actx->jointAngleLimit = 1;
+		actx->safetyFlag = 1;
+	}else
+	{
+		actx->jointAngleLimit = 1;
+	}
+
+}
+
 // Output joint angle in degrees, measured from joint zero
 float getJointAngle(void)
 {
@@ -199,12 +225,12 @@ float getJointAngle(void)
 				break;
 			case 0:
 				//Configuration orientation
-				jointAngleCnts = ( JOINT_ZERO + JOINT_ENC_DIR * (*(rigid1.ex.joint_ang)) );
-				jointAngle = ( (float) jointAngleCnts)  * 360/JOINT_CPR;
+				jointAngleCnts = JOINT_ANGLE_DIR * ( JOINT_ZERO + JOINT_ENC_DIR * (*(rigid1.ex.joint_ang)) );
+				jointAngle = ( (float) jointAngleCnts)  * (ANG_UNIT)/JOINT_CPR;
 
 				//Absolute orientation to evaluate against soft-limits
-				jointAngleCntsAbsolute = ( JOINT_ZERO_ABS + JOINT_ENC_DIR * (*(rigid1.ex.joint_ang)) );
-				jointAngleAbsolute = ( (float) jointAngleCnts)  * 360/JOINT_CPR;
+				jointAngleCntsAbsolute = JOINT_ANGLE_DIR * ( JOINT_ZERO_ABS + JOINT_ENC_DIR * (*(rigid1.ex.joint_ang)) );
+				jointAngleAbsolute = ( (float) jointAngleCnts)  * (ANG_UNIT)/JOINT_CPR;
 
 				//Check angle limits, raise flag for safety check
 				if( jointAngleAbsolute < JOINT_MIN || jointAngleAbsolute > JOINT_MAX)
@@ -224,6 +250,55 @@ float getJointAngle(void)
 				break;
 		}
 	return jointAngle;
+}
+
+/*
+ * Return joint angular velocity
+ */
+float getJointAngularVelocity(void)
+{
+	static uint32_t timer = 0;	//probably don't need this state business.
+	static int8_t jointAngleState = -1;
+	static int32_t jointAngleVelCnts = 0;
+	static float jointAngleVel = 0;
+	static float jointAngleAcc = 0;
+
+	switch(jointAngleState)
+			{
+				case -1:
+					//We give FSM2 some time to refresh values, first time -- likley not necessary?
+					timer++;
+					if(timer > 25)
+					{
+						jointAngleVelCnts = *(rigid1.ex.joint_ang_vel);
+						jointAngleState = 0;
+					}
+					break;
+				case 0:
+					//Configuration orientation
+					jointAngleVelCnts = JOINT_ANGLE_DIR  * ( *(rigid1.ex.joint_ang_vel) ); // * JOINT_ENC_DIR, don't think we need this
+					jointAngleVel = ( (float) jointAngleVelCnts)  * ANG_UNIT/JOINT_CPR *1000; // [ANG_UNIT/s]
+
+					update_diffarr(&jnt_ang_clks, act1.jointAngle, 10);
+
+					jointAngleAcc = get_accl_1k_5samples_downsampled(&jnt_ang_clks)/2609; //rad/s^2
+
+					// found in user-ex-ActPack
+//					mot_ang = *rigid1.ex.enc_ang - mot_ang_offset;
+//					mot_vel = *exec1.enc_ang_vel; //cpms
+//
+//					update_diffarr(&mot_ang_clks, mot_ang, 10);
+//
+//					mot_acc = get_accl_1k_5samples_downsampled(&mot_ang_clks)/2609; //rad/s^2
+//					rigid1.ex.mot_acc = mot_acc;
+
+
+					break;
+				default:
+					//do nothing, if something went wrong.
+					break;
+			}
+		return jointAngleVel;
 }
 
 // Output axial force on screw, Returns [Newtons]
@@ -278,12 +353,15 @@ float getLinkageMomentArm(float theta)
 	static float a = 0, b = 0, T = 0, F = 0;
 	static float A = 0, c = 0, r = 0, C_ang = 0;
 	static float theta_r = 0;
-	theta_r = theta * M_PI / 180;	// convert deg to radians.
+//	theta_r = ANG_UNIT % 360 ? (theta*M_PI/180) : theta; 	// convert deg to radians if necessary.
+//	theta_r = theta * M_PI / 180;	// convert deg to radians.
 
     static const float t = 47; 		// [mm] tibial offset
     static const float t_k = 140; 	// [mm] offset from knee along tibia
     static const float f = 39;  	// [mm] femur offset
     static const float f_k = 18;	// [mm] offset from knee along femur
+
+    theta_r = theta;
 
     a = sqrt( t*t + t_k*t_k);
     b = sqrt( f*f + f_k*f_k);
