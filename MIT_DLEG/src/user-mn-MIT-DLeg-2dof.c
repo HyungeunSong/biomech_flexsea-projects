@@ -52,10 +52,13 @@
 
 uint8_t mitDlegInfo[2] = {PORT_RS485_2, PORT_RS485_2};
 
-//SAFETY FLAGS
+//SAFETY FLAGS - in addition to enum, so can be cleared but don't lose other flags that may exist.
 static int8_t isSafetyFlag = 0;
 static int8_t isAngleLimit = 0;
 static int8_t isTorqueLimit = 0;
+static int8_t isTempLimit = 0;
+
+static int32_t currentOpLimit = CURRENT_LIMIT; 	//operational limit for current.
 
 struct act_s act1;		//actuator sensor structure.
 
@@ -79,15 +82,20 @@ void MIT_DLeg_fsm_1(void)
 {
 	#if(ACTIVE_PROJECT == PROJECT_MIT_DLEG)
 
-    static uint32_t time = 0, state = -2;
+    static uint32_t time = 0;
+    static int32_t state = -2;
 
 //    struct act_s *ac1 = &act1;	// make a pointer to act1 structure.
 
 
     //Increment time (1 tick = 1ms)
     time++;
-    static float test = 0;
 
+    //Must run every loop, but needs to stabilize before initializing the first time.
+    if(state > -2)
+    {
+    	updateSensorValues( &act1 );	// updates all actuator sensors, will throw safety flags.
+    }
 
 	//begin safety check
     if (safetyFailure()) {
@@ -133,18 +141,14 @@ void MIT_DLeg_fsm_1(void)
 			//Pick one of those demos:
 			//openSpeedFSM();
 //			twoPositionFSM();
+//			oneTorqueFSM();
 
-			//test passing passing reference
-
-			updateSensorValues( &act1 );  // This will throw safetyFlag is sense out of limits
-
+			rigid1.mn.genVar[3] = rigid1.mn.analog[0];
 			rigid1.mn.genVar[4] = act1.safetyFlag;
 			rigid1.mn.genVar[5] = act1.jointAngle * 360/(ANG_UNIT);
 			rigid1.mn.genVar[6] = act1.axialForce;
 			rigid1.mn.genVar[7] = 1000*act1.linkageMomentArm; //mm
 			rigid1.mn.genVar[8] = act1.jointTorque;
-
-
 
 			break;
 
@@ -170,34 +174,71 @@ void MIT_DLeg_fsm_2(void)
 //****************************************************************************
 // Private Function(s)
 //****************************************************************************
-int8_t safetyFailure(void) {
-
+/*
+ * Check for safety flags, and act on them.
+ * todo: come up with correct strategies to deal with flags, include thermal limits also
+ */
+int8_t safetyFailure(void)
+{
 	switch(isSafetyFlag)
 	{
-	case SAFETY_OKAY:
-		return 0;
-	case SAFETY_ANGLE:
-			//SHUT MOTORS
-		return 0;//1
-	case SAFETY_TORQUE:
-			//SHUT MOTORS
-		return 0;//1
-	default:
-		break;
+		case SAFETY_OK:
+			return 0;
+		case SAFETY_ANGLE:
+
+			//check if flag is not still active to be released, else do something about problem.
+			if( !isAngleLimit )
+			{
+				isSafetyFlag = SAFETY_OK;
+				break;
+			} else // remedy the problem
+			{
+
+			}
+
+			return 0;//1
+		case SAFETY_TORQUE:
+
+			//check if flag is not still active to be released, else do something about problem.
+			if( !isTorqueLimit )
+			{
+				isSafetyFlag = SAFETY_OK;
+				break;
+			} else // remedy the problem
+			{
+				setMotorTorque(&act1, 0);
+			}
+
+			return 0;//1
+
+		case SAFETY_TEMP:
+			//check if flag is not still active to be released, else do something about problem.
+			if( !isTempLimit )
+			{
+				currentOpLimit = CURRENT_LIMIT;		// return to full power todo: may want to gradually increase
+				isSafetyFlag = SAFETY_OK;
+				break;
+			} else // remedy the problem
+			{
+				if (currentOpLimit > 0)
+				{
+					currentOpLimit--;	//reduce current limit every cycle until we cool down.
+				}
+			}
+
+			return 0;
+
+		default:
+			break;
 	}
 
 
-	//check joint angles
-//	if (*rigid1.ex.joint_ang <= )
-	//check torque sensor
-
-	//check motor and board temps
-	//return 1;
 	return 0;	//return 0 if everything checks out. not yet checking anything!
 }
 
 /*
  * Collect all sensor values and update the actuator structure.
+ * Throws safety flags on Joint Angle, Joint Torque, since these functions look at transformed values.
  */
 void updateSensorValues(struct act_s *actx)
 {
@@ -214,19 +255,32 @@ void updateSensorValues(struct act_s *actx)
 	actx->axialForce = getAxialForce();
 	actx->jointTorque = getJointTorque();
 
-	actx->motorVel = rigid1.ex.enc_ang_vel * 1 / 16.384 * (ANG_UNIT);	// rad/s
+	actx->motorVel =  *rigid1.ex.enc_ang_vel * 1 / 16.384 * (ANG_UNIT);	// rad/s
 	actx->motorAcc = rigid1.ex.mot_acc;	// rad/s/s
 
 	actx->regTemp = rigid1.re.temp;
-	actx->motTemp = rigid1.mn.analog[0];	//motor temp on AI0
+	actx->motTemp = getMotorTempSensor();
+	actx->motCurr = rigid1.ex.mot_current;
 
 	actx->safetyFlag = isSafetyFlag;
 
-//	if(actx->regTemp > PCB_TEMP_LIMIT || actx->motTemp > MOTOR_TEMP_LIMIT)
-//	{
-//		isSafetyFlag = SAFETY_TEMP;
-//	}
+	if(actx->regTemp > PCB_TEMP_LIMIT || actx->motTemp > MOTOR_TEMP_LIMIT)
+	{
+		isSafetyFlag = SAFETY_TEMP;
+		isTempLimit = 1;
+	}
 
+}
+
+//The ADC reads the motor Temp sensor - MCP9700 T0-92. This function converts the result to degrees.
+int16_t getMotorTempSensor(void)
+{
+	static int16_t mot_temp = 0;
+	mot_temp = ((VSENSE_SLOPE * (rigid1.mn.analog[0] - V25_TICKS) \
+					/ TICK_TO_V) + 25);
+	rigid1.mn.mot_temp = mot_temp;
+
+	return mot_temp;
 }
 
 //
@@ -271,7 +325,7 @@ float * getJointAngleKinematic( void )
 				jointAngleCntsAbsolute = JOINT_ANGLE_DIR * ( JOINT_ZERO_ABS + JOINT_ENC_DIR * (*(rigid1.ex.joint_ang)) );
 				jointAngleAbsolute = ( (float) jointAngleCnts)  * (ANG_UNIT)/JOINT_CPR;
 
-				rigid1.mn.genVar[9] = jointAngleAbsolute;
+				rigid1.mn.genVar[9] = jointAngleCntsAbsolute;
 
 
 				//Check angle limits, raise flag for safety check
@@ -373,7 +427,7 @@ float getLinkageMomentArm(float theta)
 /*
  *  Determine torque at joint due to moment arm and axial force
  *  input:	moment arm [m]
- *  return: 	joint torque [Nm]
+ *  return: joint torque [Nm]
  */
 float getJointTorque()
 {
@@ -395,7 +449,7 @@ float getJointTorque()
 	return torque;
 }
 
-/* WORK IN PROGRESS
+/* WORK IN PROGRESS -
  * Calculate required motor torque, based on joint torque
  * input:	*actx,  actuator structure reference
  * 			tor_d, 	desired torque at joint [Nm]
@@ -428,13 +482,24 @@ void setMotorTorque(struct act_s *actx, float tau_des)
 	//PID around motor torque.
 	tau_motor = tau_err * TORQ_KP + (tau_err_dot) * TORQ_KD + (tau_err_int) * TORQ_KI;
 
-	I = 1 / MOT_KT * (tau_motor + (MOT_J + MOT_TRANS)*ddtheta_m + MOT_B*dtheta_m);		// + (J_rotor + J_screw)*ddtheta_m + B*dtheta_m
+	I = 1 / MOT_KT * ( (int32_t) tau_motor + (MOT_J + MOT_TRANS)*ddtheta_m + MOT_B*dtheta_m);		// + (J_rotor + J_screw)*ddtheta_m + B*dtheta_m
+
+	//Saturate I for our current operational limits -- limit can be reduced by safetyFailure() due to heating
+	if(I > currentOpLimit || I < -currentOpLimit)
+	{
+		I = currentOpLimit;
+	}
 
 	setMotorCurrent(I);				// send current command to comm buffer to Execute
 }
 
-// not workign yet
-void biomControlTorque(float theta_set, float k1, float k2, float b)
+/*
+ * Simple Biom controller
+ * input:	theta_set, desired theta
+ * 			k1,k2,b, impedance parameters
+ * return: 	tor_d, desired torque
+ */
+float biomControlTorque(float theta_set, float k1, float k2, float b)
 {
 	static float theta = 0, theta_d = 0;
 	static int32_t cur = 0;
@@ -444,31 +509,19 @@ void biomControlTorque(float theta_set, float k1, float k2, float b)
 	theta_d = act1.jointVel;
 	tor_d = k1 *(theta - theta_set) + k2 * (theta-theta_set)*(theta-theta_set)*(theta-theta_set) + b*theta_d;
 
-	cur = tor_d / MOT_KT;
+	return tor_d;
 
 }
 
-//This should be static, but exo-angles needs it. (ToDo)
 void mit_init_current_controller(void)
 {
 
 	setControlMode(CTRL_CURRENT);
 	writeEx.setpoint = 0;			// wasn't included in setControlMode, could be safe for init
-	setControlGains( ACTRL_I_KP, ACTRL_I_KI, ACTRL_I_KD );
+	setControlGains( ACTRL_I_KP, ACTRL_I_KI, ACTRL_I_KD, 0 );
 
+// there is another example of this may have been an old initializtion, copied from user-mn-ActPack
 
-// this may have been an old initializtion, copied from user-mn-ActPack
-//	ctrl.active_ctrl = CTRL_CURRENT;
-//	ctrl.current.gain.g0 = ACTRL_I_KP;
-//	ctrl.current.gain.g1 = ACTRL_I_KI;
-//	ctrl.current.setpoint_val = 0;
-//
-//	//Prep for comm:
-//	writeEx.ctrl = CTRL_CURRENT;
-//	writeEx.g[0] = ACTRL_I_KP;
-//	writeEx.g[1] = ACTRL_I_KI;
-//	writeEx.setpoint = 0;
-//	writeEx.setGains = CHANGE;
 }
 
 int8_t findPoles(void) {
@@ -481,7 +534,7 @@ int8_t findPoles(void) {
 		case 0:
 			//Disable FSM2:
 			disableActPackFSM2();
-			if(timer > 10)
+			if(timer > 100)
 			{
 				polesState = 1;
 				timer = 0;

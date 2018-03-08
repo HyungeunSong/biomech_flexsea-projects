@@ -40,6 +40,7 @@
 //****************************************************************************
 extern struct act_s act1;	//define actuator structure shared
 
+
 //****************************************************************************
 // Structure(s)
 //****************************************************************************
@@ -53,11 +54,12 @@ struct act_s
 	float linkageMomentArm;
 	float axialForce;
 	float jointTorque;
-	float motorVel;			// motor velocity [rad/s]
+	int32_t motorVel;			// motor velocity [rad/s]
 	int32_t motorAcc;		// motor acceleration [rad/s/s]
 	int8_t safetyFlag;			// todo: consider if we want these flags here.
 	int16_t regTemp;		// regulate temperature
 	int16_t motTemp;		// motor temperature
+	int16_t motCurr;		// motor current.
 };
 
 //****************************************************************************
@@ -73,19 +75,21 @@ void MIT_DLeg_fsm_2(void);
 //****************************************************************************
 int8_t safetyFailure(void);
 int8_t findPoles(void);
+void mit_init_current_controller(void);
 
-//float getJointAngle(void);
 float * getJointAngleKinematic(void);
 float getJointAngularVelocity(void);
 float getAxialForce(void);
 float getLinkageMomentArm(float);
 float getJointTorque(void);
+int16_t getMotorTempSensor(void);
 void updateSensorValues(struct act_s *actx);
-void biomControlTorque(float theta_set, float k1, float k2, float b);
+float biomControlTorque(float theta_set, float k1, float k2, float b);
 void setMotorTorque(struct act_s *actx, float tor_d);
 
 void openSpeedFSM(void);
 void twoPositionFSM(void);
+void oneTorqueFSM();
 
 //****************************************************************************
 // Definition(s):
@@ -159,8 +163,8 @@ void twoPositionFSM(void);
 
 //Joint software limits [Degrees]
 #ifdef IS_ANKLE
-#define JOINT_MIN 			-20  * (ANG_UNIT)/360	// [deg] Actuator physical limit min = -30deg dorsiflexion
-#define JOINT_MAX 			60   * (ANG_UNIT)/360	// [deg] Actuator physical limit  max = +90deg plantarflex
+#define JOINT_MIN 			-20  * (ANG_UNIT)/360	// [deg] Actuator physical limit min = 30deg dorsiflexion
+#define JOINT_MAX 			20   * (ANG_UNIT)/360	// [deg] Actuator physical limit  max = -90deg plantarflex
 #endif
 
 #ifdef IS_KNEE
@@ -173,11 +177,16 @@ void twoPositionFSM(void);
 //safety limits
 #define PCB_TEMP_LIMIT   50
 #define MOTOR_TEMP_LIMIT 50
-#define TORQUE_LIMIT	 50
+#define TORQUE_LIMIT	 10			// Joint torque [Nm]
 #define CURRENT_LIMIT    10
 
+// Motor Temp Sensor
+#define V25_TICKS		943		//760mV/3.3V * 4096 = 943
+#define VSENSE_SLOPE	400		//1/2.5mV
+#define TICK_TO_V		1241	//ticks/V
+
 enum {
-	SAFETY_OKAY		=		0,
+	SAFETY_OK		=		0,
 	SAFETY_ANGLE	=		1,
 	SAFETY_TORQUE	=		2,
 	SAFETY_FLEX_TEMP=		3,
