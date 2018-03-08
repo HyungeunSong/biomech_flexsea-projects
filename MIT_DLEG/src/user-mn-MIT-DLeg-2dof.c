@@ -69,6 +69,8 @@ struct diffarr_s jnt_ang_clks;		//maybe used for velocity and accel calcs.
 void init_MIT_DLeg(void)
 {
 
+
+
 }
 
 //MIT DLeg Finite State Machine.
@@ -115,6 +117,9 @@ void MIT_DLeg_fsm_1(void)
 //				state = 0;
 //				time = 0;
 //			}
+
+			mit_init_current_controller();		//initialize Current Controller with gains
+
 			state = 0;
 
 			break;
@@ -203,11 +208,14 @@ void updateSensorValues(struct act_s *actx)
 	jointKinematic = getJointAngleKinematic();
 
 	actx->jointAngle = *(jointKinematic + 0);
-	actx->jointAngleVel = *(jointKinematic + 1);
-	actx->jointAngleAcc = *(jointKinematic + 2);
+	actx->jointVel = *(jointKinematic + 1);
+	actx->jointAcc = *(jointKinematic + 2);
 	actx->linkageMomentArm = getLinkageMomentArm( actx->jointAngle );
 	actx->axialForce = getAxialForce();
 	actx->jointTorque = getJointTorque();
+
+	actx->motorVel = rigid1.ex.enc_ang_vel * 1 / 16.384 * (ANG_UNIT);	// rad/s
+	actx->motorAcc = rigid1.ex.mot_acc;	// rad/s/s
 
 	actx->regTemp = rigid1.re.temp;
 	actx->motTemp = rigid1.mn.analog[0];	//motor temp on AI0
@@ -281,7 +289,7 @@ float * getJointAngleKinematic( void )
 				//VELOCITY
 				joint[1] = 	*(rigid1.ex.joint_ang_vel) * (ANG_UNIT)/JOINT_CPR * SECONDS;
 
-				//ACCEL  -- todo: not workign yet, need to evaluate timer thing
+				//ACCEL  -- todo: not workign yet, need to evaluate timer thing, maybe better to reflect motor accl to joint (more counts available)
 				jointAccel = ( ( joint[1] - last_jointVel ) / timer ) * (ANG_UNIT)/JOINT_CPR * SECONDS;
 				last_jointVel = joint[1];
 				joint[2] = jointAccel;
@@ -295,56 +303,6 @@ float * getJointAngleKinematic( void )
 	return joint;
 }
 
-/*
- * Return joint angular velocity, don't think it's working, wrapping this into Joint Angle
- * NOT IN USE, but tries to use downsampled trick from execute
- */
-//float getJointAngularVelocity(void)
-//{
-//	static uint32_t timer = 0;	//probably don't need this state business.
-//	static int8_t jointAngleState = -1;
-//	static int32_t jointAngleVelCnts = 0;
-//	static float jointAngleVel = 0;
-//	static float jointAngleAcc = 0;
-//
-//	switch(jointAngleState)
-//			{
-//				case -1:
-//					//We give FSM2 some time to refresh values, first time -- likley not necessary?
-//					timer++;
-//					if(timer > 25)
-//					{
-//						jointAngleVelCnts = *(rigid1.ex.joint_ang_vel);
-//						jointAngleState = 0;
-//					}
-//					break;
-//				case 0:
-//					//Configuration orientation
-//					jointAngleVelCnts =  ( *(rigid1.ex.joint_ang_vel) ); // * JOINT_ENC_DIR, don't think we need this
-//					jointAngleVel = ( (float) jointAngleVelCnts)  * (ANG_UNIT)/JOINT_CPR *1000; // [ANG_UNIT/s]
-//
-//					// copied from user-ex-ActPack.c
-//					update_diffarr(&jnt_ang_clks, act1.jointAngle, 10);
-//					jointAngleAcc = get_accl_1k_5samples_downsampled(&jnt_ang_clks)/2609; //rad/s^2
-//					//end copied
-//
-//					// found in user-ex-ActPack
-////					mot_ang = *rigid1.ex.enc_ang - mot_ang_offset;
-////					mot_vel = *exec1.enc_ang_vel; //cpms
-////
-////					update_diffarr(&mot_ang_clks, mot_ang, 10);
-////
-////					mot_acc = get_accl_1k_5samples_downsampled(&mot_ang_clks)/2609; //rad/s^2
-////					rigid1.ex.mot_acc = mot_acc;
-//
-//
-//					break;
-//				default:
-//					//do nothing, if something went wrong.
-//					break;
-//			}
-//		return jointAngleAcc;
-//}
 
 // Output axial force on screw, Returns [Newtons]
 float getAxialForce(void)
@@ -353,19 +311,9 @@ float getAxialForce(void)
 	static uint32_t timer = 0;
 	static uint16_t strainReading = 0;
 	static uint16_t tareOffset = 0;
-//	static uint16_t strainMeasBias = 32768;	// centered around 2.5V, or 2^16/2 ticks.
 	static float axialForce = 0;
 
 	strainReading = (rigid1.ex.strain);
-
-//	//moved this to jointTorque
-	//Check for over force reading, set flag, and exit.
-//	if (strainReading >= FORCE_MAX_TICKS || strainReading <= FORCE_MIN_TICKS)
-//	{
-//		isForceOutOfRange = 1;			// these are all redundant.
-//		act1.jointTorqueLimit = 1;
-//		act1.safetyFlag = 1;
-//	}
 
 	switch(tareState)
 	{
@@ -380,7 +328,6 @@ float getAxialForce(void)
 			}
 			break;
 		case 0:
-//			axialForce =  ( strainReading - strainMeasBias - tareOffset ) * FORCE_PER_TICK;	// bias = 2.5V, or 32768 ticks
 			axialForce =  FORCE_DIR * ( strainReading - tareOffset ) * FORCE_PER_TICK;	// Looks correct with simple weight, need to test with a scale
 			break;
 		default:
@@ -392,7 +339,7 @@ float getAxialForce(void)
 }
 
 // Linear Actuator Actual Moment Arm,
-// input( jointAngle, theta [deg] )
+// input( jointAngle, theta [rad] )
 // return moment arm projected length  [m]
 float getLinkageMomentArm(float theta)
 {
@@ -450,47 +397,41 @@ float getJointTorque()
 
 /* WORK IN PROGRESS
  * Calculate required motor torque, based on joint torque
- * input:	joint angle (instantaneous value)
- * return Motor Torque request, or maybe current
+ * input:	*actx,  actuator structure reference
+ * 			tor_d, 	desired torque at joint [Nm]
+ * return:	set motor torque
+ * 			Motor Torque request, or maybe current
  */
-//void jointToMotorTransform(struct act_s *actx, float tor_d)
-//{
-//	tor_d // torque desired at the load
-//	N_ETA // transmission efficiency
-//	N = actx->linkageMomentArm * N_SCREW;
-//	//simplest
-//	tor_m =  actx->axialForce / ( N );
-//
-//	//more correctly, include spring dynamics
-//	xs = tor_l/Ks;
-//
-///* FROM MATLAB CODE
-// * Determine motor displacement due to desired load displacement, and spring
-// *  Fs = tau_s ./ var.LinearActGeometry.momentArm;  % linear force at spring
-//        Xs = Fs./var.Ks;        % Displacement of Spring
-//        dXs = ddt(Xs, t, Load.cyclic);
-//        X_l = var.LinearActGeometry.C0 - C_l; % calulate linear motion of screw from initial max extension
-//%         X_l = C_l - var.LinearActGeometry.C0; % calulate linear motion of screw from initial max extension
-//        N_effective = var.N .* var.LinearActGeometry.momentArm;
-//        theta_m = var.N.*(Xs + X_l); % TRY it out, displacement due to spring deflection is only screw reduction, output is total gear reduction
-// *
-// * tau_m = 1/var.N .* Fs;  % motor torque is due to force on screw
-// *
-// *
-// * calc_electricVector(motorVectors, objectiveStruct)
-//    Motor = getfield(objectiveStruct, 'Motor');
-//    %% motor response : electrical
-//    tau_m = motorVectors.tau_m;
-//    dtheta_m = motorVectors.dtheta_m;
-//    ddtheta_m = motorVectors.ddtheta_m;
-//
-//    I = 1/Motor.Kt .* ( tau_m + (objectiveStruct.Motor.J + objectiveStruct.Trans.Jtrans).*ddtheta_m + objectiveStruct.Motor.B .* dtheta_m );
-//    dI = ddt(I, objectiveStruct.Load.time, objectiveStruct.Load.cyclic);
-//    V = I.*(Motor.R) + dI.*(Motor.L/1000) + (Motor.Kt).*dtheta_m;
-// */
-//
-//
-//}
+void setMotorTorque(struct act_s *actx, float tau_des)
+{
+	static int8_t time = 1; 		// ms
+	static float N = 0;				// moment arm [m]
+	static float tau_load = 0;  	//joint torque reflected to motor.
+	static float tau_err = 0, tau_err_last = 0;
+	static float tau_err_dot = 0, tau_err_int = 0;
+	static float tau_motor = 0;		// motor torque signal
+	static int32_t dtheta_m = 0, ddtheta_m = 0;	//motor vel, accel
+	static int32_t I = 0;			// motor current signal
+
+	N = actx->linkageMomentArm * N_SCREW;
+	dtheta_m = actx->motorVel;
+	ddtheta_m = actx->motorAcc;
+
+	tau_load =  actx->jointTorque / ( N * N_ETA);	// measured torque reflected to motor
+	tau_des = tau_des / (N * N_ETA);					// desired joint torque, reflected to motor
+
+	tau_err = (tau_load - tau_des);
+	tau_err_dot = (tau_err - tau_err_last)/time;
+	tau_err_int = tau_err_int + tau_err;
+	tau_err_last = tau_err;
+
+	//PID around motor torque.
+	tau_motor = tau_err * TORQ_KP + (tau_err_dot) * TORQ_KD + (tau_err_int) * TORQ_KI;
+
+	I = 1 / MOT_KT * (tau_motor + (MOT_J + MOT_TRANS)*ddtheta_m + MOT_B*dtheta_m);		// + (J_rotor + J_screw)*ddtheta_m + B*dtheta_m
+
+	setMotorCurrent(I);				// send current command to comm buffer to Execute
+}
 
 // not workign yet
 void biomControlTorque(float theta_set, float k1, float k2, float b)
@@ -500,11 +441,34 @@ void biomControlTorque(float theta_set, float k1, float k2, float b)
 	static float tor_d = 0;
 
 	theta = act1.jointAngle;
-	theta_d = act1.jointAngleVel;
+	theta_d = act1.jointVel;
 	tor_d = k1 *(theta - theta_set) + k2 * (theta-theta_set)*(theta-theta_set)*(theta-theta_set) + b*theta_d;
 
 	cur = tor_d / MOT_KT;
 
+}
+
+//This should be static, but exo-angles needs it. (ToDo)
+void mit_init_current_controller(void)
+{
+
+	setControlMode(CTRL_CURRENT);
+	writeEx.setpoint = 0;			// wasn't included in setControlMode, could be safe for init
+	setControlGains( ACTRL_I_KP, ACTRL_I_KI, ACTRL_I_KD );
+
+
+// this may have been an old initializtion, copied from user-mn-ActPack
+//	ctrl.active_ctrl = CTRL_CURRENT;
+//	ctrl.current.gain.g0 = ACTRL_I_KP;
+//	ctrl.current.gain.g1 = ACTRL_I_KI;
+//	ctrl.current.setpoint_val = 0;
+//
+//	//Prep for comm:
+//	writeEx.ctrl = CTRL_CURRENT;
+//	writeEx.g[0] = ACTRL_I_KP;
+//	writeEx.g[1] = ACTRL_I_KI;
+//	writeEx.setpoint = 0;
+//	writeEx.setGains = CHANGE;
 }
 
 int8_t findPoles(void) {

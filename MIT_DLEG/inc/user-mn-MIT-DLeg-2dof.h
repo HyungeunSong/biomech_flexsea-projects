@@ -48,11 +48,13 @@ extern struct act_s act1;	//define actuator structure shared
 struct act_s
 {
 	float jointAngle;
-	float jointAngleVel;
-	float jointAngleAcc;
+	float jointVel;
+	float jointAcc;
 	float linkageMomentArm;
 	float axialForce;
 	float jointTorque;
+	float motorVel;			// motor velocity [rad/s]
+	int32_t motorAcc;		// motor acceleration [rad/s/s]
 	int8_t safetyFlag;			// todo: consider if we want these flags here.
 	int16_t regTemp;		// regulate temperature
 	int16_t motTemp;		// motor temperature
@@ -80,7 +82,7 @@ float getLinkageMomentArm(float);
 float getJointTorque(void);
 void updateSensorValues(struct act_s *actx);
 void biomControlTorque(float theta_set, float k1, float k2, float b);
-void jointToMotorTransform(struct act_s *actx, float tor_d);
+void setMotorTorque(struct act_s *actx, float tor_d);
 
 void openSpeedFSM(void);
 void twoPositionFSM(void);
@@ -123,6 +125,23 @@ void twoPositionFSM(void);
 #define FORCE_MIN_TICKS		( (FORCE_STRAIN_BIAS - FORCE_STRAIN_GAIN * FORCE_EXCIT * FORCE_RATED_OUTPUT)/5 * 65535 )	// min ticks expected
 #define FORCE_PER_TICK		( ( 2 * FORCE_MAX  ) / (FORCE_MAX_TICKS - FORCE_MIN_TICKS)	)// Newtons/Tick
 
+//Torque Control PID gains
+#define TORQ_KP				1
+#define TORQ_KD				0
+#define TORQ_KI				0
+
+// Motor Parameters
+#define MOT_KT 				0.0951	// Kt value
+#define MOT_L				0.068	// mH
+#define MOT_J				0		// rotor inertia
+#define MOT_B				0		// damping term for motor and screw combined, drag from rolling elements
+#define MOT_TRANS			0		// lumped mass inertia todo: consider MotorMass on Spring inertia contribution.
+
+// Current Control Parameters  -- Test these on a motor test stand first
+#define ACTRL_I_KP					100
+#define ACTRL_I_KI					0
+#define ACTRL_I_KD					0
+
 //Transmission
 #ifdef IS_ANKLE			//UPDATE THIS WITH NEW SCREWs ankle = 0.002
 #define N_SCREW				(2*M_PI/0.005)	// Ballscrew ratio
@@ -149,9 +168,7 @@ void twoPositionFSM(void);
 #define JOINT_MAX 			20	* (ANG_UNIT)/360	// [deg] Actuator physical limit max = +90deg flexion
 #endif
 
-// Motor Parameters
-#define MOT_KT 			0.0951		// Kt value
-#define MOT_L			0.068		// mH
+
 
 //safety limits
 #define PCB_TEMP_LIMIT   50
