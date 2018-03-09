@@ -121,10 +121,10 @@ void MIT_DLeg_fsm_1(void)
 
 		case -1:
 			//turned off for testing without Motor usage
-			if(findPoles()) {
-				state = 0;
-				time = 0;
-			}
+//			if(findPoles()) {
+//				state = 0;
+//				time = 0;
+//			}
 
 			state = 0;
 
