@@ -84,12 +84,12 @@ float getLinkageMomentArm(float);
 float getJointTorque(void);
 int16_t getMotorTempSensor(void);
 void updateSensorValues(struct act_s *actx);
-float biomControlTorque(float theta_set, float k1, float k2, float b);
+float biomControlImpedance(float theta_set, float k1, float k2, float b); 		// returns a desired joint torque, then use setMotorTorque() to get the motor to do its magic
 void setMotorTorque(struct act_s *actx, float tor_d);
 
 void openSpeedFSM(void);
 void twoPositionFSM(void);
-void oneTorqueFSM();
+void twoTorqueFSM();
 
 //****************************************************************************
 // Definition(s):
@@ -130,7 +130,7 @@ void oneTorqueFSM();
 #define FORCE_PER_TICK		( ( 2 * FORCE_MAX  ) / (FORCE_MAX_TICKS - FORCE_MIN_TICKS)	)// Newtons/Tick
 
 //Torque Control PID gains
-#define TORQ_KP				1
+#define TORQ_KP				10
 #define TORQ_KD				0
 #define TORQ_KI				0
 
@@ -178,7 +178,7 @@ void oneTorqueFSM();
 #define PCB_TEMP_LIMIT   50
 #define MOTOR_TEMP_LIMIT 50
 #define TORQUE_LIMIT	 10			// Joint torque [Nm]
-#define CURRENT_LIMIT    10
+#define CURRENT_LIMIT    3000			// [mA] useful in this form
 
 // Motor Temp Sensor
 #define V25_TICKS		943		//760mV/3.3V * 4096 = 943

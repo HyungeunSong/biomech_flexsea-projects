@@ -121,19 +121,19 @@ void MIT_DLeg_fsm_1(void)
 
 		case -1:
 			//turned off for testing without Motor usage
-//			if(findPoles()) {
-//				state = 0;
-//				time = 0;
-//			}
+			if(findPoles()) {
+				state = 0;
+				time = 0;
+			}
 
-			mit_init_current_controller();		//initialize Current Controller with gains
-
-			state = 0;
+//			state = 0;
 
 			break;
 
 		case 0:
 			//reserve for additional initialization
+			mit_init_current_controller();		//initialize Current Controller with gains
+
 			state = 1;
 			time = 0;
 			break;
@@ -142,12 +142,15 @@ void MIT_DLeg_fsm_1(void)
 			//openSpeedFSM();
 //			twoPositionFSM();
 //			oneTorqueFSM();
+			twoTorqueFSM( &act1);
+			rigid1.mn.genVar[0] = act1.safetyFlag;
+			rigid1.mn.genVar[1] = 0;
+			rigid1.mn.genVar[2] = 0;
 
-			rigid1.mn.genVar[3] = rigid1.mn.analog[0];
-			rigid1.mn.genVar[4] = act1.safetyFlag;
+
 			rigid1.mn.genVar[5] = act1.jointAngle * 360/(ANG_UNIT);
-			rigid1.mn.genVar[6] = act1.axialForce;
-			rigid1.mn.genVar[7] = 1000*act1.linkageMomentArm; //mm
+
+
 			rigid1.mn.genVar[8] = act1.jointTorque;
 
 			break;
@@ -193,6 +196,7 @@ int8_t safetyFailure(void)
 				break;
 			} else // remedy the problem
 			{
+				setMotorCurrent(0); // turn off motor. might need something better than this.
 
 			}
 
@@ -276,8 +280,9 @@ void updateSensorValues(struct act_s *actx)
 int16_t getMotorTempSensor(void)
 {
 	static int16_t mot_temp = 0;
-	mot_temp = ((VSENSE_SLOPE * (rigid1.mn.analog[0] - V25_TICKS) \
-					/ TICK_TO_V) + 25);
+//	mot_temp = ((VSENSE_SLOPE * (rigid1.mn.analog[0] - V25_TICKS) \
+//					/ TICK_TO_V) + 25);
+	mot_temp = (rigid1.mn.analog[0] * (3.3/4096) - 500) / 10; 	//celsius
 	rigid1.mn.mot_temp = mot_temp;
 
 	return mot_temp;
@@ -325,17 +330,12 @@ float * getJointAngleKinematic( void )
 				jointAngleCntsAbsolute = JOINT_ANGLE_DIR * ( JOINT_ZERO_ABS + JOINT_ENC_DIR * (*(rigid1.ex.joint_ang)) );
 				jointAngleAbsolute = ( (float) jointAngleCnts)  * (ANG_UNIT)/JOINT_CPR;
 
-				rigid1.mn.genVar[9] = jointAngleCntsAbsolute;
-
-
 				//Check angle limits, raise flag for safety check
 				if( jointAngleAbsolute <= JOINT_MIN  || jointAngleAbsolute >= JOINT_MAX)
 				{
 					isSafetyFlag = SAFETY_ANGLE;
 					isAngleLimit = 1;		//these are all redundant, choose if we want the struct thing.
-
-				}
-				else
+				} else
 				{
 					isAngleLimit = 0;
 				}
@@ -449,7 +449,7 @@ float getJointTorque()
 	return torque;
 }
 
-/* WORK IN PROGRESS -
+/*
  * Calculate required motor torque, based on joint torque
  * input:	*actx,  actuator structure reference
  * 			tor_d, 	desired torque at joint [Nm]
@@ -460,7 +460,7 @@ void setMotorTorque(struct act_s *actx, float tau_des)
 {
 	static int8_t time = 1; 		// ms
 	static float N = 0;				// moment arm [m]
-	static float tau_load = 0;  	//joint torque reflected to motor.
+	static float tau_meas = 0;  	//joint torque reflected to motor.
 	static float tau_err = 0, tau_err_last = 0;
 	static float tau_err_dot = 0, tau_err_int = 0;
 	static float tau_motor = 0;		// motor torque signal
@@ -471,24 +471,36 @@ void setMotorTorque(struct act_s *actx, float tau_des)
 	dtheta_m = actx->motorVel;
 	ddtheta_m = actx->motorAcc;
 
-	tau_load =  actx->jointTorque / ( N * N_ETA);	// measured torque reflected to motor
-	tau_des = tau_des / (N * N_ETA);					// desired joint torque, reflected to motor
 
-	tau_err = (tau_load - tau_des);
+
+	tau_meas =  actx->jointTorque / ( N ) * 1000;	// measured torque reflected to motor [mNm]
+	tau_des = tau_des / (N * N_ETA) *1000;					// desired joint torque, reflected to motor [mNm]
+
+	rigid1.mn.genVar[3] = tau_meas;
+	rigid1.mn.genVar[6] = tau_des;
+
+	tau_err = (tau_des - tau_meas);
 	tau_err_dot = (tau_err - tau_err_last)/time;
 	tau_err_int = tau_err_int + tau_err;
 	tau_err_last = tau_err;
+
+
 
 	//PID around motor torque.
 	tau_motor = tau_err * TORQ_KP + (tau_err_dot) * TORQ_KD + (tau_err_int) * TORQ_KI;
 
 	I = 1 / MOT_KT * ( (int32_t) tau_motor + (MOT_J + MOT_TRANS)*ddtheta_m + MOT_B*dtheta_m);		// + (J_rotor + J_screw)*ddtheta_m + B*dtheta_m
+	//I think I needs to be scaled to mA, but not sure yet.
+
+	rigid1.mn.genVar[7] = I; // mA
 
 	//Saturate I for our current operational limits -- limit can be reduced by safetyFailure() due to heating
 	if(I > currentOpLimit || I < -currentOpLimit)
 	{
 		I = currentOpLimit;
 	}
+
+	rigid1.mn.genVar[4] = I;
 
 	setMotorCurrent(I);				// send current command to comm buffer to Execute
 }
@@ -499,10 +511,9 @@ void setMotorTorque(struct act_s *actx, float tau_des)
  * 			k1,k2,b, impedance parameters
  * return: 	tor_d, desired torque
  */
-float biomControlTorque(float theta_set, float k1, float k2, float b)
+float biomControlImpedance(float theta_set, float k1, float k2, float b)
 {
 	static float theta = 0, theta_d = 0;
-	static int32_t cur = 0;
 	static float tor_d = 0;
 
 	theta = act1.jointAngle;
@@ -649,6 +660,56 @@ void twoPositionFSM(void)
 			break;
 	}
 }
+
+void twoTorqueFSM(struct act_s *actx)
+{
+	static uint32_t timer = 0, deltaT = 0;
+	static int8_t fsm1State = -1;
+	static int32_t initPos = 0;
+
+	rigid1.mn.genVar[9] = fsm1State;
+
+
+	switch(fsm1State)
+	{
+		case -1:
+			//We give FSM2 some time to refresh values
+			timer++;
+			if(timer > 25)
+			{
+				initPos = actx->jointAngle;
+				fsm1State = 0;
+			}
+			break;
+		case 0:
+//			setControlMode(CTRL_POSITION);
+//			setControlGains(20, 6, 0, 0);	//kp = 20, ki = 6
+//			setMotorPosition(initPos);
+			mit_init_current_controller();
+			fsm1State = 1;
+			deltaT = 0;
+			break;
+		case 1:
+			deltaT++;
+			if(deltaT > 1000)
+			{
+				deltaT = 0;
+				fsm1State = 2;
+			}
+			setMotorTorque( actx, 2);
+			break;
+		case 2:
+			deltaT++;
+			if(deltaT > 1000)
+			{
+				deltaT = 0;
+				fsm1State = 1;
+			}
+			setMotorTorque( actx, -2);
+			break;
+	}
+}
+
 
 #endif 	//BOARD_TYPE_FLEXSEA_MANAGE
 #endif //INCLUDE_UPROJ_MIT_DLEG
