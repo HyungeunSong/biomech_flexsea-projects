@@ -92,7 +92,7 @@ void MIT_DLeg_fsm_1(void)
     time++;
 
     //Must run every loop, but needs to stabilize before initializing the first time.
-    if(state > -2)
+    if(state > -1)
     {
     	updateSensorValues( &act1 );	// updates all actuator sensors, will throw safety flags.
     }
@@ -126,7 +126,7 @@ void MIT_DLeg_fsm_1(void)
 				time = 0;
 			}
 
-//			state = 0;
+			state = 0;
 
 			break;
 
@@ -141,10 +141,11 @@ void MIT_DLeg_fsm_1(void)
 			//Pick one of those demos:
 			//openSpeedFSM();
 //			twoPositionFSM();
-//			oneTorqueFSM();
-			twoTorqueFSM( &act1);
+			oneTorqueFSM( &act1 );
+//			twoTorqueFSM( &act1);
+
 			rigid1.mn.genVar[0] = act1.safetyFlag;
-			rigid1.mn.genVar[1] = 0;
+			rigid1.mn.genVar[1] = state;
 			rigid1.mn.genVar[2] = 0;
 
 
@@ -472,7 +473,7 @@ void setMotorTorque(struct act_s *actx, float tau_des)
 	ddtheta_m = actx->motorAcc;
 
 
-
+	// todo: better fidelity may be had if we modeled N_ETA as a function of torque, long term goal, if necessary
 	tau_meas =  actx->jointTorque / ( N ) * 1000;	// measured torque reflected to motor [mNm]
 	tau_des = tau_des / (N * N_ETA) *1000;					// desired joint torque, reflected to motor [mNm]
 
@@ -495,9 +496,12 @@ void setMotorTorque(struct act_s *actx, float tau_des)
 	rigid1.mn.genVar[7] = I; // mA
 
 	//Saturate I for our current operational limits -- limit can be reduced by safetyFailure() due to heating
-	if(I > currentOpLimit || I < -currentOpLimit)
+	if(I > currentOpLimit )
 	{
 		I = currentOpLimit;
+	} else if (I < -currentOpLimit)
+	{
+		I = -currentOpLimit;
 	}
 
 	rigid1.mn.genVar[4] = I;
@@ -568,7 +572,7 @@ int8_t findPoles(void) {
 		case 2:
 			//Wait 60s... (conservative)
 
-			if(timer >= 60*SECONDS)
+			if(timer >= 45*SECONDS)
 			{
 				//Enable FSM2, position controller
 				enableActPackFSM2();
@@ -682,10 +686,7 @@ void twoTorqueFSM(struct act_s *actx)
 			}
 			break;
 		case 0:
-//			setControlMode(CTRL_POSITION);
-//			setControlGains(20, 6, 0, 0);	//kp = 20, ki = 6
-//			setMotorPosition(initPos);
-			mit_init_current_controller();
+//			mit_init_current_controller();
 			fsm1State = 1;
 			deltaT = 0;
 			break;
@@ -710,6 +711,51 @@ void twoTorqueFSM(struct act_s *actx)
 	}
 }
 
+void oneTorqueFSM(struct act_s *actx)
+{
+	static uint32_t timer = 0, deltaT = 0;
+	static int8_t fsm1State = -1;
+	static int32_t initPos = 0;
+
+	rigid1.mn.genVar[9] = fsm1State;
+
+
+	switch(fsm1State)
+	{
+		case -1:
+			//We give FSM2 some time to refresh values
+			timer++;
+			if(timer > 25)
+			{
+				initPos = actx->jointAngle;
+				fsm1State = 0;
+			}
+			break;
+		case 0:
+//			mit_init_current_controller();
+			fsm1State = 1;
+			deltaT = 0;
+			break;
+		case 1:
+			deltaT++;
+			if(deltaT > 3000)
+			{
+				deltaT = 0;
+				fsm1State = 2;
+			}
+			setMotorTorque( actx, 2);
+			break;
+		case 2:
+			deltaT++;
+			if(deltaT > 3000)
+			{
+				deltaT = 0;
+				fsm1State = 1;
+			}
+			setMotorTorque( actx, 0);
+			break;
+	}
+}
 
 #endif 	//BOARD_TYPE_FLEXSEA_MANAGE
 #endif //INCLUDE_UPROJ_MIT_DLEG

@@ -89,7 +89,9 @@ void setMotorTorque(struct act_s *actx, float tor_d);
 
 void openSpeedFSM(void);
 void twoPositionFSM(void);
+void oneTorqueFSM();
 void twoTorqueFSM();
+
 
 //****************************************************************************
 // Definition(s):
@@ -137,8 +139,8 @@ void twoTorqueFSM();
 // Motor Parameters
 #define MOT_KT 				0.0951	// Kt value
 #define MOT_L				0.068	// mH
-#define MOT_J				0		// rotor inertia
-#define MOT_B				0		// damping term for motor and screw combined, drag from rolling elements
+#define MOT_J				0//0.000322951	// rotor inertia, [kgm^2]
+#define MOT_B				0.0		// damping term for motor and screw combined, drag from rolling elements
 #define MOT_TRANS			0		// lumped mass inertia todo: consider MotorMass on Spring inertia contribution.
 
 // Current Control Parameters  -- Test these on a motor test stand first
@@ -163,8 +165,8 @@ void twoTorqueFSM();
 
 //Joint software limits [Degrees]
 #ifdef IS_ANKLE
-#define JOINT_MIN 			-20  * (ANG_UNIT)/360	// [deg] Actuator physical limit min = 30deg dorsiflexion
-#define JOINT_MAX 			20   * (ANG_UNIT)/360	// [deg] Actuator physical limit  max = -90deg plantarflex
+#define JOINT_MIN 			-70  * (ANG_UNIT)/360	// [deg] Actuator physical limit min = 30deg dorsiflexion
+#define JOINT_MAX 			25   * (ANG_UNIT)/360	// [deg] Actuator physical limit  max = -90deg plantarflex
 #endif
 
 #ifdef IS_KNEE
