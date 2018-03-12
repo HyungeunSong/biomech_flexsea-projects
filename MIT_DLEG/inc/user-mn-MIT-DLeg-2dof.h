@@ -111,12 +111,12 @@ void twoTorqueFSM();
 //Encoder
 #define JOINT_ZERO_OFFSET 	0 		// [deg] Joint Angle offset, CW rotation, based on Setup, ie. TEDtalk flexfoot angle = 20, fittings, etc.
 #define JOINT_ENC_DIR 		-1		// Encoder orientation. CW = 1 (knee orientation), CCW = -1
-#define JOINT_ANGLE_DIR 	-1		// Joint angle direction. Std convention is Ankle: Dorsiflexion (+), Plantarflex (-)
+#define JOINT_ANGLE_DIR 	1		// Joint angle direction. Std convention is Right Hand Rule - Ankle: Dorsiflexion (-), Plantarflex (+)
 #define JOINT_CPR 			16383	// Counts per revolution (todo: is it (2^14 - 1)?)
 #define JOINT_HS_MIN		( 30 * JOINT_CPR/360 )		// Joint hard stop angle [deg] in dorsiflexion)
 #define JOINT_HS_MAX		( 90 * JOINT_CPR/360 )		// Joint hard stop angle [deg] in plantarflexion)
-#define JOINT_MIN_ABS		10967	// Absolute encoder at MIN (Max dorsiflexion, 30Deg)
-#define JOINT_MAX_ABS		5444	// Absolute encoder reading at MAX (Max Plantarflexion, 90Deg)
+#define JOINT_MIN_ABS		11777	// Absolute encoder at MIN (Max dorsiflexion, 30Deg)
+#define JOINT_MAX_ABS		6209	// Absolute encoder reading at MAX (Max Plantarflexion, 90Deg)
 #define JOINT_ZERO_ABS		JOINT_MIN_ABS + JOINT_ENC_DIR * JOINT_HS_MIN 	// Absolute reading of Actuator Zero as designed in CAD
 #define JOINT_ZERO 			JOINT_ZERO_ABS + JOINT_ENC_DIR * JOINT_ZERO_OFFSET *JOINT_CPR/360 		// counts for actual angle.
 
@@ -144,8 +144,8 @@ void twoTorqueFSM();
 #define MOT_TRANS			0		// lumped mass inertia todo: consider MotorMass on Spring inertia contribution.
 
 // Current Control Parameters  -- Test these on a motor test stand first
-#define ACTRL_I_KP					100
-#define ACTRL_I_KI					0
+#define ACTRL_I_KP					15
+#define ACTRL_I_KI					15
 #define ACTRL_I_KD					0
 
 //Transmission
@@ -165,8 +165,8 @@ void twoTorqueFSM();
 
 //Joint software limits [Degrees]
 #ifdef IS_ANKLE
-#define JOINT_MIN 			-70  * (ANG_UNIT)/360	// [deg] Actuator physical limit min = 30deg dorsiflexion
-#define JOINT_MAX 			25   * (ANG_UNIT)/360	// [deg] Actuator physical limit  max = -90deg plantarflex
+#define JOINT_MIN 			-20  * (ANG_UNIT)/360	// [deg] Actuator physical limit min = 30deg dorsiflexion
+#define JOINT_MAX 			60   * (ANG_UNIT)/360	// [deg] Actuator physical limit  max = 90deg plantarflex
 #endif
 
 #ifdef IS_KNEE

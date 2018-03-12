@@ -145,8 +145,8 @@ void MIT_DLeg_fsm_1(void)
 //			twoTorqueFSM( &act1);
 
 			rigid1.mn.genVar[0] = act1.safetyFlag;
-			rigid1.mn.genVar[1] = state;
-			rigid1.mn.genVar[2] = 0;
+//			rigid1.mn.genVar[1] = act1.linkageMomentArm;
+			rigid1.mn.genVar[2] = user_data_1.w[0];
 
 
 			rigid1.mn.genVar[5] = act1.jointAngle * 360/(ANG_UNIT);
@@ -468,7 +468,14 @@ void setMotorTorque(struct act_s *actx, float tau_des)
 	static int32_t dtheta_m = 0, ddtheta_m = 0;	//motor vel, accel
 	static int32_t I = 0;			// motor current signal
 
+	static int32_t KP = TORQ_KP;
+	static int32_t KI = TORQ_KI;
+	static int32_t KD = TORQ_KD;
+
+
+
 	N = actx->linkageMomentArm * N_SCREW;
+	rigid1.mn.genVar[1] = N;
 	dtheta_m = actx->motorVel;
 	ddtheta_m = actx->motorAcc;
 
@@ -488,7 +495,7 @@ void setMotorTorque(struct act_s *actx, float tau_des)
 
 
 	//PID around motor torque.
-	tau_motor = tau_err * TORQ_KP + (tau_err_dot) * TORQ_KD + (tau_err_int) * TORQ_KI;
+	tau_motor = tau_err * KP + (tau_err_dot) * KD + (tau_err_int) * KI;
 
 	I = 1 / MOT_KT * ( (int32_t) tau_motor + (MOT_J + MOT_TRANS)*ddtheta_m + MOT_B*dtheta_m);		// + (J_rotor + J_screw)*ddtheta_m + B*dtheta_m
 	//I think I needs to be scaled to mA, but not sure yet.
@@ -496,7 +503,7 @@ void setMotorTorque(struct act_s *actx, float tau_des)
 	rigid1.mn.genVar[7] = I; // mA
 
 	//Saturate I for our current operational limits -- limit can be reduced by safetyFailure() due to heating
-	if(I > currentOpLimit )
+	if(I >= currentOpLimit )
 	{
 		I = currentOpLimit;
 	} else if (I < -currentOpLimit)
@@ -743,7 +750,7 @@ void oneTorqueFSM(struct act_s *actx)
 				deltaT = 0;
 				fsm1State = 2;
 			}
-			setMotorTorque( actx, 2);
+			setMotorTorque( actx, user_data_1.w[0]);	//set torque
 			break;
 		case 2:
 			deltaT++;
