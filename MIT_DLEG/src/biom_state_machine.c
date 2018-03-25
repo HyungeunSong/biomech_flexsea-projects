@@ -17,15 +17,16 @@ extern "C" {
 WalkingStateMachine stateMachine;
 Act_s act1;
 // Gain Parameters are modified to match our joint angle convention (RHR for right ankle, wearer's perspective)
-GainParams eswGains = {0.134, 0, 0.001, 0};	// goldfarb setpt = 23
-GainParams lswGains = {0.134, 0, 0.02, 0}; // goldfarb setpt = 2
-GainParams estGains = {0, 0, B_ES_NM_S_P_DEG, 0};
-GainParams lstGains = {0, 0, 0, JNT_ORIENT * 0}; //currently unused in simple implementation
+GainParams eswGains = {0.134, 0, 0.001, 0};	// goldfarb setpt = 23, Early Swing
+GainParams lswGains = {0.134, 0, 0.02, 0}; // goldfarb setpt = 2, Late Swing
+GainParams estGains = {0, 0, B_ES_NM_S_P_DEG, 0}; // Early Stance
+GainParams lstGains = {0, 0, 0, JNT_ORIENT * 0}; // Late Stance, currently unused in simple implementation
 
-GainParams lstPowerGains = {4.5, 0, 0.1, JNT_ORIENT * -18};
+GainParams lstPowerGains = {4.5, 0, 0.1, JNT_ORIENT * -18};	// Late Stance Power gains
 GainParams emgStandGains = {0, 0, 0, 0}; //currently unused
 GainParams emgFreeGains = {2, 0, 0.005, 0};
 
+//Variables to be updated by user_data_1.w[x]
 float lspEngAng = 10.0;
 float lstPGK1 = 4.5;
 float lstPGTheta =  JNT_ORIENT * -18;
