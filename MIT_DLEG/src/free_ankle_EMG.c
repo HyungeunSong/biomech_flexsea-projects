@@ -51,7 +51,7 @@
 // joint limits
 float max_DFangle = -20 * -JOINT_ANGLE_DIR; // In terms of robot limits. Convention inside here is opposite robot.
 float max_PFangle = 40 * -JOINT_ANGLE_DIR;
-float equilibriumAngle = 10 * -JOINT_ANGLE_DIR; // 30 degrees plantarflexion
+float equilibriumAngle = 0 * -JOINT_ANGLE_DIR; // 30 degrees plantarflexion
 
 int32_t EMGavgs[2] = {0, 0}; // Initialize the EMG signals to 0;
 float PFDF_state[3] = {0, 0, 0};
@@ -89,7 +89,6 @@ float virtualJ = VIRTUAL_J;
 //****************************************************************************
 // Public Function(s)
 //****************************************************************************
-
 //PFDF_state[0] is position of virtual joint (i.e. desired position of robot)
 //PFDF_state[1] is velocity of virtual joint (not used in current controller, but must be stored for numerical integration)
 //PFDF_state[2] is desired stiffness, derived from average muscle activation.
@@ -145,7 +144,7 @@ void interpret_EMG (float k, float b, float J)
 	float activationThresh = dpOnThresh * emgInMax;
 
 	//user inputs
-	cocontractThresh = user_data_1.w[2]/100.;
+	cocontractThresh = user_data_1.w[2]/100.;	// default
 	pfTorqueGain = user_data_1.w[3];
 	dfTorqueGain = user_data_1.w[4];
 

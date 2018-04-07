@@ -364,7 +364,7 @@ static void initializeUserWrites(WalkParams *wParams){
 	wParams->earlyStanceDecayConstant = EARLYSTANCE_DECAY_CONSTANT;
 	walkParams.lstPGDelTics = 1;
 
-	user_data_1.w[0] = 100;
+//	user_data_1.w[0] = 100;
 
 
 //	user_data_1.w[1] = 150;
@@ -372,17 +372,17 @@ static void initializeUserWrites(WalkParams *wParams){
 //	user_data_1.w[3] = 100;
 //	user_data_1.w[4] = 10;
 	user_data_1.w[1] = 0; //emg contr / 100
-	user_data_1.w[2] = 1400; //imp scalar / 100
-	user_data_1.w[3] = 200; //power term /10
-	user_data_1.w[4] = 30;
+	user_data_1.w[2] = 0; //imp scalar / 100
+	user_data_1.w[3] = 0; //power term /10
+	user_data_1.w[4] = 0;
 
 
 
-	user_data_1.w[5] = 700; //Jim's was defaulted to 700;
-	user_data_1.w[6] = 0;
-	user_data_1.w[7] = 14;
-	user_data_1.w[8] = 450;
-	user_data_1.w[9] = 45; //Jim's default was 45
+//	user_data_1.w[5] = 700; //Jim's was defaulted to 700;
+//	user_data_1.w[6] = 0;
+//	user_data_1.w[7] = 14;
+//	user_data_1.w[8] = 450;
+//	user_data_1.w[9] = 45; //Jim's default was 45
 
 	wParams->initializedStateMachineVariables = 1;
 }

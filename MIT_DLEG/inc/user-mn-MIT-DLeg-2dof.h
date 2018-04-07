@@ -109,8 +109,8 @@ void torqueSweepTest(struct act_s *actx);
 //#define IS_KNEE
 
 //2. Select device
-#define DEVICE_TF08_A01			// Define specific actuator configuration. Ankle 01
-//#define DEVICE_TF08_A02		// Define specific actuator configuration. Ankle 02
+//#define DEVICE_TF08_A01			// Define specific actuator configuration. Ankle 01
+#define DEVICE_TF08_A02		// Define specific actuator configuration. Ankle 02
 //#define DEVICE_TF08_K01		// Define specific actuator configuration. Knee 01
 //#define DEVICE_TF08_K02		// Define specific actuator configuration. Knee 02
 
@@ -205,7 +205,7 @@ void torqueSweepTest(struct act_s *actx);
 //Torque Control PID gains
 #define TORQ_KP_INIT			1.2 //10.
 #define TORQ_KI_INIT			0.
-#define TORQ_KD_INIT			2. //5, 2. 1 is also a good number
+#define TORQ_KD_INIT			5. // 2. 1 is also a good number
 
 
 // Motor Parameters
@@ -249,7 +249,7 @@ void torqueSweepTest(struct act_s *actx);
 #define PCB_TEMP_LIMIT_INIT		70
 #define MOTOR_TEMP_LIMIT_INIT	70
 #define ABS_TORQUE_LIMIT_INIT	150	    // Joint torque [Nm]
-#define CURRENT_LIMIT_INIT		65000		// [mA] useful in this form, 40000 max
+#define CURRENT_LIMIT_INIT		40000		// [mA] useful in this form, 40000 max
 
 // Motor Temp Sensor
 #define V25_TICKS		943		//760mV/3.3V * 4096 = 943
