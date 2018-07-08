@@ -154,6 +154,9 @@ void runFlatGroundFSM(Act_s *actx) {
 					stateMachine.current_state = STATE_EARLY_STANCE;
 					walkParams.transition_id = 3;
 				}
+				else
+					stateMachine.current_state = STATE_EARLY_STANCE;
+					walkParams.transition_id = 5;
 			}
 
 
