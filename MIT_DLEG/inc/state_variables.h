@@ -101,6 +101,46 @@ typedef struct walkParams {
 
 } WalkParams;
 
+typedef struct linearSpline{
+	float xi; // x initial
+	float xf; // x final
+	float yi; // y initial
+	float yf; // y final
+	float X; // interpolation x coordinate
+	float Y; // interpolation y coordinate
+	float theta_set_fsm;
+	float res_factor; // resolution factor
+	uint32_t time_state;
+} LinearSpline;
+
+typedef struct cubicSpline{
+	float xi_1; // x initial
+	float x_int_1; // x intermediate
+	float xf_1; // x final
+	float yi_1; // y initial
+	float y_int_1; // y intermediate
+	float yf_1; // y final
+	float X; // interpolation x coordinate
+	float Y; // interpolation Y coordinate
+	float theta_set_fsm;
+	float res_factor; // resolution factor
+	uint32_t time_state;
+	float a1_1; // coefficients for the polynomial
+	float a2_1;
+	float b1_1;
+	float b2_1;
+	float xi_2; // x initial
+	float x_int_2; // x intermediate
+	float xf_2; // x final
+	float yi_2; // y initial
+	float y_int_2; // y intermediate
+	float yf_2; // y final
+	float a1_2; // coefficients for cubic functions
+	float a2_2;
+	float b1_2;
+	float b2_2;
+} CubicSpline;
+
 
 
 //****************************************************************************
