@@ -110,10 +110,10 @@ void torqueSweepTest(struct act_s *actx);
 //#define IS_KNEE
 
 //2. Select device
-//#define DEVICE_TF08_A01			// Define specific actuator configuration. Ankle 01
+#define DEVICE_TF08_A01			// Define specific actuator configuration. Ankle 01
 //#define DEVICE_TF08_A02		// Define specific actuator configuration. Ankle 02
 //#define DEVICE_TF08_A03		// Define specific actuator configuration. Knee 01
-#define DEVICE_TF08_A04		// Define specific actuator configuration. Knee 02
+//#define DEVICE_TF08_A04		// Define specific actuator configuration. Knee 02
 
 
 //Begin device specific configurations
@@ -155,15 +155,17 @@ void torqueSweepTest(struct act_s *actx);
 #define TORQ_CALIB_B		0.0656	// y=Mx+b, from collected data set, applied load
 
 //Torque Control PID gains
-#define TORQ_KP_INIT			1.2 // good for step response, for zero torque 3 is good
-#define TORQ_KI_INIT			0.
-#define TORQ_KD_INIT			2. // good for step response, for zero torque 15 is good
+#define TORQ_KP_INIT			30.0// updated for volt control 1.2 //10.
+#define TORQ_KI_INIT			0.0 // could be up a little, but it causes searching
+#define TORQ_KD_INIT			1.0//2. //5, 2. 1 is also a good number
+
 
 // Motor Parameters
-#define MOT_KT 			0.055	// Phase Kt value = linearKt/(3^0.5)
-#define MOT_L			0.068	// mH
-#define MOT_J			0		//0.000322951	// rotor inertia, [kgm^2]
-#define MOT_B			0.0		// damping term for motor and screw combined, drag from rolling elements
+#define MOT_KT 			0.055133	// Phase Kt value = linearKt/(3^0.5)
+#define MOT_R			0.059	// Ohm
+#define MOT_L			0.168	// mH
+#define MOT_J			0.0//0.000120 //0.000322951		//0.000322951	// rotor inertia, [kgm^2]
+#define MOT_B			0.0//0.000200 //0.000131		// damping term for motor and screw combined, drag from rolling elements
 #define MOT_TRANS		0		// lumped mass inertia todo: consider MotorMass on Spring inertia contribution.
 #define MOT_STIC_POS	1400	// stiction current, 1800
 #define MOT_STIC_NEG	1600	// stiction current, 1800
@@ -323,7 +325,7 @@ void torqueSweepTest(struct act_s *actx);
 #define TORQ_CALIB_B		0.0656	// y=Mx+b, from collected data set, applied load
 
 //Torque Control PID gains
-#define TORQ_KP_INIT			30.0//1.2 //10.
+#define TORQ_KP_INIT			30.0// updated for volt control 1.2 //10.
 #define TORQ_KI_INIT			0.0 // could be up a little, but it causes searching
 #define TORQ_KD_INIT			1.0//2. //5, 2. 1 is also a good number
 

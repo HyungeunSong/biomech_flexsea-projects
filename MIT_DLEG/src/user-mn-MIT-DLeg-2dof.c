@@ -189,7 +189,7 @@ void MIT_DLeg_fsm_1(void)
 			    } else {
 
 
-//			    	runFlatGroundFSM(&act1);
+			    	runFlatGroundFSM(&act1);
 
 			    	// Check that torques are within safety range.
 			    	// todo: Safety Scalar to allow userwrite to change maximum torque val.
@@ -200,12 +200,12 @@ void MIT_DLeg_fsm_1(void)
 			    	}
 
 
-			    	torqueKp = ( (float) user_data_1.w[0] ) /100.0;
-			    	torqueKd = ( (float) user_data_1.w[1] ) /100.0;
-			    	torqueKi = ( (float) user_data_1.w[2] ) /100.0;
-			    	k1 = ( (float) user_data_1.w[3] ) /100.0;
-
-			    	act1.tauDes = biomCalcImpedance(k1, 0.0, 0.1, 5.0);
+//			    	torqueKp = ( (float) user_data_1.w[0] ) /100.0;
+//			    	torqueKd = ( (float) user_data_1.w[1] ) /100.0;
+//			    	torqueKi = ( (float) user_data_1.w[2] ) /100.0;
+//			    	k1 = ( (float) user_data_1.w[3] ) /100.0;
+//
+//			    	act1.tauDes = biomCalcImpedance(k1, 0.0, 0.1, 5.0);
 
 
 
