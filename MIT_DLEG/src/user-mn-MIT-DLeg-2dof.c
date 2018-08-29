@@ -122,6 +122,7 @@ void MIT_DLeg_fsm_1(void)
 	#if(ACTIVE_PROJECT == PROJECT_MIT_DLEG)
 
     static uint32_t time = 0;
+    float k1=1.0;
 
     //Increment time (1 tick = 1ms nominally; need to confirm)
     time++;
@@ -143,7 +144,8 @@ void MIT_DLeg_fsm_1(void)
 			stateMachine.current_state = STATE_INIT;
 			//turned off for testing without Motor usage
 			if(findPoles()) {
-				mit_init_current_controller();		//initialize Current Controller with gains
+//				mit_init_current_controller();		//initialize Current Controller with gains
+				mit_init_voltage_controller();		//initialize Voltage Controller
 				fsm1State = 0;
 				time = 0;
 			}
@@ -157,6 +159,9 @@ void MIT_DLeg_fsm_1(void)
 			isEnabledUpdateSensors = 1;
 
 			//reserve for additional initialization
+			walkParams.initializedStateMachineVariables = 0;	// set flag that we need to initialize variables
+
+//			initializeUserWrites(act1, &walkParams);
 
 			act1.safetyTorqueScalar = 1.0;
 
@@ -182,7 +187,9 @@ void MIT_DLeg_fsm_1(void)
 			    	stateMachine.current_state = STATE_EARLY_STANCE;
 
 			    } else {
-			    	runFlatGroundFSM(&act1);
+
+
+//			    	runFlatGroundFSM(&act1);
 
 			    	// Check that torques are within safety range.
 			    	// todo: Safety Scalar to allow userwrite to change maximum torque val.
@@ -192,10 +199,19 @@ void MIT_DLeg_fsm_1(void)
 			    		act1.tauDes = - act1.safetyTorqueScalar * ABS_TORQUE_LIMIT_INIT;
 			    	}
 
+
+			    	torqueKp = ( (float) user_data_1.w[0] ) /100.0;
+			    	torqueKd = ( (float) user_data_1.w[1] ) /100.0;
+			    	torqueKi = ( (float) user_data_1.w[2] ) /100.0;
+			    	k1 = ( (float) user_data_1.w[3] ) /100.0;
+
+			    	act1.tauDes = biomCalcImpedance(k1, 0.0, 0.1, 5.0);
+
+
+
 			    	setMotorTorque(&act1, act1.tauDes);
 
 
-//			    	act1.tauDes = biomCalcImpedance(user_data_1.w[0]/100., user_data_1.w[1]/100., user_data_1.w[2]/100., user_data_1.w[3]);
 
 //			        rigid1.mn.genVar[0] = startedOverLimit;
 					rigid1.mn.genVar[1] = (int16_t) (act1.jointAngleDegrees*100.0); //deg
@@ -203,8 +219,8 @@ void MIT_DLeg_fsm_1(void)
  					rigid1.mn.genVar[3] = (int16_t) (act1.jointVel * 100.0); 	// rad/s
 					rigid1.mn.genVar[4] = (int16_t) (act1.jointTorqueRate*100.0);
 					rigid1.mn.genVar[5] = (int16_t) (act1.jointTorque*100.0); //Nm
-					rigid1.mn.genVar[6] = (int16_t) (JIM_LG); // LG
-					rigid1.mn.genVar[7] = (int16_t) (JIM_TA); // TA
+					rigid1.mn.genVar[6] = (int16_t) (act1.desiredVoltage); // LG
+					rigid1.mn.genVar[7] = (int16_t) (act1.dmotCurr); // TA
 					rigid1.mn.genVar[8] = stateMachine.current_state;
 					rigid1.mn.genVar[9] = act1.tauDes*100;
 			    }
@@ -318,6 +334,9 @@ void updateSensorValues(struct act_s *actx)
 	actx->regTemp = rigid1.re.temp;
 	actx->motTemp = 0; // REMOVED FOR NOISE ISSUES getMotorTempSensor();
 	actx->motCurr = rigid1.ex.mot_current;
+
+	actx->dmotCurr = (int32_t) ( 0.8 * actx->dmotCurr + 0.2*(actx->motCurr - actx->motCurrLast) * SECONDS ); // d/dt motor current
+
 	actx->currentOpLimit = currentOpLimit; // throttled mA
 
 	actx->safetyFlag = isSafetyFlag;
@@ -544,6 +563,8 @@ void setMotorTorque(struct act_s *actx, float tau_des)
 	float tau_PID = 0, tau_err_dot = 0, tau_motor_comp = 0;		// motor torque signal
 	int32_t dtheta_m = 0, ddtheta_m = 0;		//motor vel, accel
 	int32_t I = 0;								// motor current signal
+	int32_t V = 0;								// motor Voltage command
+	float maxIntTorq = ABS_TORQUE_LIMIT_INIT/4;	// saturation limit for integer term
 
 	N = actx->linkageMomentArm * nScrew;
 	dtheta_m = actx->motorVel;
@@ -563,6 +584,13 @@ void setMotorTorque(struct act_s *actx, float tau_des)
 	tau_err_dot = (tau_err - tau_err_last);
 	tau_err_int = tau_err_int + tau_err;
 	tau_err_last = tau_err;
+
+	//Set saturation limit in tau_err_int to prevent large windup
+	if (tau_err_int > maxIntTorq) {
+		tau_err_int = maxIntTorq;
+	} else if (tau_err_int < - maxIntTorq) {
+		tau_err_int = -maxIntTorq;
+	}
 
 	//PID around motor torque
 	tau_PID = tau_err*torqueKp + tau_err_dot*torqueKd + tau_err_int*torqueKi;
@@ -594,8 +622,24 @@ void setMotorTorque(struct act_s *actx, float tau_des)
 		I = -currentOpLimit;
 	}
 
+
+	V = (int32_t) ( ( I/currentScalar * MOT_R + MOT_KT * dtheta_m) * VOLTAGE_SCALAR_INIT ); // demanded mV,  + actx->dmotCurr * MOT_L/1000
+
+	//Saturate V with small voltage headroom
+	if (V > rigid1.re.vb)
+	{
+		V = rigid1.re.vb - rigid1.re.vb/50;
+	} else if (V < -rigid1.re.vb)
+	{
+		V = -rigid1.re.vb + rigid1.re.vb/50;
+	}
+
 	actx->desiredCurrent = (int32_t) I; 	// demanded mA
-	setMotorCurrent(actx->desiredCurrent);	// send current command to comm buffer to Execute
+	actx->desiredVoltage = (int32_t) V;
+
+//	setMotorCurrent(actx->desiredCurrent);	// send current command to comm buffer to Execute
+
+	setMotorVoltage(actx->desiredVoltage);
 
 	//variables used in cmd-rigid offset 5
 	rigid1.mn.userVar[5] = tau_meas*1000;
@@ -633,7 +677,7 @@ float calcRestoringCurrent(struct act_s *actx, float N) {
 		}
 	}
 
-	return (tauDes/(N*N_ETA)) * currentScalar/MOT_KT;
+	return (tauDes/(N*N_ETA)) * currentScalar/MOT_KT;	//todonot sure if this currentScalar is quite correct here
 
 }
 
@@ -662,6 +706,13 @@ void mit_init_current_controller(void) {
 	setControlMode(CTRL_CURRENT);
 	writeEx.setpoint = 0;			// wasn't included in setControlMode, could be safe for init
 	setControlGains(currentKp, currentKi, currentKd, 0);
+
+}
+
+void mit_init_voltage_controller(void) {
+
+	setControlMode(CTRL_OPEN);
+	writeEx.setpoint = 0;			// wasn't included in setControlMode, could be safe for init
 
 }
 
