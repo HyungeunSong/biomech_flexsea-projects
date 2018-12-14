@@ -14,6 +14,8 @@ extern "C" {
 #include "main.h"
 #include <math.h>
 
+#include "torqueTrajectoryTracking.h"
+
 WalkingStateMachine stateMachine;
 Act_s act1;
 WalkParams walkParams;
@@ -25,9 +27,23 @@ GainParams lswGains = {1.5,0.0,  0.3, -5.0};
 GainParams estGains = {0.0, 0.0, 0.2, 0.0};	// may want to increase this damping, at least.
 GainParams lstPowerGains = {4.5,0.0,  0.1, 14};
 
+// torque trajectory tracking variables
 
+extern uint16_t torqueTrackingMode; 	// turn on/off torque tracking mode
+static float time_stance = 0.0;
+static float standard_stance_period = 600.0; // TODO: verify this, at 1.25m/s
+static float previous_stance_period = 600.0;
+static float previous_swing_period = 400.0; // TODO: verify this, at 1.25m/s
+static float time_swing = 0.0;
+static float speedFactor;
+static float percent;
+static uint32_t current_index;
+static float torque_traj_mscaled[TRAJ_SIZE]; // mass scaled torque trajectory
+
+static float torqueCommand;
 
 #ifdef BOARD_TYPE_FLEXSEA_MANAGE
+
 
 
 
@@ -69,6 +85,13 @@ void runFlatGroundFSM(Act_s *actx) {
 
         	stateMachine.current_state = STATE_EARLY_STANCE;
 
+        	// torque tracking - scale mass TODO: correct in here?
+        	for(int i=0; i<TRAJ_SIZE; i++)
+        	{
+        		torque_traj_mscaled[i] = torque_traj[i] + ((USER_MASS - 50.0)*massGains[i]);
+        	}
+
+
             break;
 					
         case STATE_EARLY_SWING: //2
@@ -87,10 +110,13 @@ void runFlatGroundFSM(Act_s *actx) {
 
             actx->tauDes = calcJointTorque(eswGains, actx, &walkParams);
 
+
             //Early Swing transition vectors
 
 			if (time_in_state >= 200) {
                 stateMachine.current_state = STATE_EARLY_STANCE;      //Transition occurs even if the early swing motion is not finished
+
+
             }
 
             //run any exit code here
@@ -151,7 +177,15 @@ void runFlatGroundFSM(Act_s *actx) {
 				updateVirtualHardstopTorque(actx, &walkParams);
 //				updateImpedanceParams(actx, &walkParams);	//Todo: Probably want to bring this back to ease into stance, though Hugh prefers a stiff ankle - why it was removed
 
-				actx->tauDes = walkParams.virtual_hardstop_tq + calcJointTorque(estGains, actx, &walkParams);
+				// torque tracking - checkTorqueTrackingMode() based on cont_swing,
+				if(checkTorqueTrackingMode()){
+					actx->tauDes = torqueTracking();
+					time_stance++;
+				}
+				else {
+					actx->tauDes = walkParams.virtual_hardstop_tq + calcJointTorque(estGains, actx, &walkParams);
+				}
+
 
 
 				//Early Stance transition vectors
@@ -184,15 +218,26 @@ void runFlatGroundFSM(Act_s *actx) {
 				updateVirtualHardstopTorque(actx, &walkParams);
 
 
-				//Linear ramp push off
-				actx->tauDes = walkParams.virtual_hardstop_tq + (walkParams.samplesInLSP/walkParams.lstPGDelTics) * calcJointTorque(lstPowerGains, actx, &walkParams);
 
+				// torque tracking - checkTorqueTrackingMode() based on cont_swing,
+				if(checkTorqueTrackingMode()){
+					actx->tauDes = torqueTracking();
+					time_stance++;
+				}
+				else {
+					//Linear ramp push off
+					actx->tauDes = walkParams.virtual_hardstop_tq + (walkParams.samplesInLSP/walkParams.lstPGDelTics) * calcJointTorque(lstPowerGains, actx, &walkParams);
+				}
 
 
 				//Late Stance Power transition vectors
 				// VECTOR (1): Late Stance Power -> Early Swing - Condition 1
 				if (abs(actx->jointTorque) < ANKLE_UNLOADED_TORQUE_THRESH && time_in_state > 100) {
 					stateMachine.current_state = STATE_EARLY_SWING;
+
+					// torque tracking - toe off save time_stance to use it later, previous gait cycle period = cont_stance, and cont_stance = 0
+					previous_stance_period = time_stance;
+					time_stance = 0.0;
 				}
         	}
 
@@ -255,7 +300,35 @@ void updateVirtualHardstopTorque(Act_s *actx, WalkParams *wParams) {
 	}
 }
 
+uint16_t checkTorqueTrackingMode(){
+	if(torqueTrackingMode == 1)
+	{
+		// 1 (impedance), 0(torque tracking)
+		return 1;
+	}
+	else
+	{
+		return 0;
+	}
+}
 
+float torqueTracking(){
+	if(previous_stance_period > standard_stance_period) {
+		previous_stance_period = standard_stance_period;
+	}
+	speedFactor = (1 - (previous_stance_period / standard_stance_period)) * 100.0;
+	percent = time_stance / previous_stance_period;
+	if(percent > 1.0) {
+		percent = 1.0;
+	}
+
+	current_index = round(percent*(float)TRAJ_SIZE);
+
+//	torqueCommand = torque_traj_mscaled[current_index] + (speedFactor*speedGains[current_index]);
+	torqueCommand = torque_traj[current_index] + (speedFactor*speedGains[current_index]);
+
+	return torqueCommand ;
+}
 
 #endif //BOARD_TYPE_FLEXSEA_MANAGE
 

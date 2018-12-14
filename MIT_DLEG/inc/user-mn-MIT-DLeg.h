@@ -61,6 +61,7 @@
 extern struct act_s act1;	//define actuator structure shared
 extern int8_t isEnabledUpdateSensors;
 
+
 //****************************************************************************
 // Structure(s)
 //****************************************************************************

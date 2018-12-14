@@ -50,7 +50,7 @@
 //****************************************************************************
 
 
-
+uint16_t torqueTrackingMode = 0;	// define standard mode first
 
 //****************************************************************************
 // Public Function(s)
@@ -112,10 +112,11 @@ void MIT_DLeg_fsm_1(void)
 
 			}
 
-			act1.safetyTorqueScalar = 1.0;
-
+			act1.safetyTorqueScalar = 0.1;
 			fsm1State = 1;
 			time = 0;
+
+
 
 			break;
 
@@ -140,7 +141,7 @@ void MIT_DLeg_fsm_1(void)
 
 			        updateUserWrites(&act1, &walkParams);
 
-//			    	runFlatGroundFSM(&act1);
+			    	runFlatGroundFSM(&act1);
 
 			    	// Check that torques are within safety range.
 			    	if (act1.tauDes > act1.safetyTorqueScalar * ABS_TORQUE_LIMIT_INIT ) {
@@ -152,8 +153,9 @@ void MIT_DLeg_fsm_1(void)
 
 
 //			    	act1.tauDes = biomCalcImpedance(user_data_1.w[0]/100., user_data_1.w[1]/100., user_data_1.w[2]/100.);
-			    	act1.tauDes = biomCalcImpedance(.5, .1, 0);
-			    	setMotorTorque(&act1, act1.tauDes);
+//			    	act1.tauDes = biomCalcImpedance(.5, .1, 0);
+
+//			    	setMotorTorque(&act1, act1.tauDes);
 
 			    	/* Output variables live here. Use this as the main reference
 			    	 * NOTE: the communication Offsets are defined in /Rigid/src/cmd-rigid.c
@@ -205,10 +207,16 @@ void MIT_DLeg_fsm_2(void)
  * Also note, the initial values will not show up in Plan, that must be manually entered*/
 
 void updateUserWrites(Act_s *actx, WalkParams *wParams){
+//	actx->safetyTorqueScalar 				= ( (float) user_data_1.w[0] ) /100.0;	// Reduce overall torque limit.
+	torqueTrackingMode						= ( (float) user_data_1.w[0] ) ;	// check tracking mode
 
-	actx->safetyTorqueScalar 				= ( (float) user_data_1.w[0] ) /100.0;	// Reduce overall torque limit.
-	wParams->virtualHardstopEngagementAngle = ( (float) user_data_1.w[1] ) /100.0;	// [Deg]
-	wParams->virtualHardstopK 				= ( (float) user_data_1.w[2] ) /100.0;	// [Nm/deg]
+//	wParams->virtualHardstopEngagementAngle = ( (float) user_data_1.w[1] ) /100.0;	// [Deg]
+
+	act1.safetyTorqueScalar					= ( (float) user_data_1.w[1] ) /100.0;	// [Deg]
+
+//	wParams->virtualHardstopK 				= ( (float) user_data_1.w[2] ) /100.0;	// [Nm/deg]
+	stateMachine.current_state				= ( (float) user_data_1.w[2] );
+
 	wParams->lspEngagementTorque 			= ( (float) user_data_1.w[3] ) /100.0; 	// [Nm] Late stance power, torque threshhold
 	wParams->lstPGDelTics 					= ( (float) user_data_1.w[4] ); 		// ramping rate
 	lstPowerGains.k1						= ( (float) user_data_1.w[5] ) / 100.0;	// [Nm/deg]
@@ -239,9 +247,14 @@ void initializeUserWrites(Act_s *actx, WalkParams *wParams){
 
 	//USER WRITE INITIALIZATION GOES HERE//////////////
 
-	user_data_1.w[0] =  (int32_t) ( actx->safetyTorqueScalar*100 ); 	// Hardstop Engagement angle
-	user_data_1.w[1] =  (int32_t) ( wParams->virtualHardstopEngagementAngle*100 ); 	// Hardstop Engagement angle
-	user_data_1.w[2] =  (int32_t) ( wParams->virtualHardstopK*100 ); 				// Hardstop spring constant
+	user_data_1.w[0] =  (int32_t) ( 0 ); 	// Hardstop Engagement angle
+//	user_data_1.w[0] =  (int32_t) ( actx->safetyTorqueScalar*100 ); 	// Hardstop Engagement angle
+	user_data_1.w[1] =  (int32_t) (10);
+//	user_data_1.w[1] =  (int32_t) ( wParams->virtualHardstopEngagementAngle*100 ); 	// Hardstop Engagement angle
+	user_data_1.w[2] =  (int32_t) ( 4 ); 				// Hardstop spring constant
+
+//	user_data_1.w[2] =  (int32_t) ( wParams->virtualHardstopK*100 ); 				// Hardstop spring constant
+
 	user_data_1.w[3] =  (int32_t) ( wParams->lspEngagementTorque*100 ); 			// Late stance power, torque threshhold
 	user_data_1.w[4] =  (int32_t) ( wParams->lstPGDelTics ); 		// ramping rate
 	user_data_1.w[5] =  (int32_t) ( lstPowerGains.k1 * 100 );		// 4.5 x 100

@@ -61,7 +61,9 @@ void updateImpedanceParams(Act_s *actx, WalkParams *wParams);
 float calcJointTorque(GainParams gainParams, Act_s *actx, WalkParams *wParams);
 void updateVirtualHardstopTorque(Act_s *actx, WalkParams *wParams);
 
-
+// Torque trajectory tracking
+uint16_t checkTorqueTrackingMode();
+float torqueTracking();
 
 #endif //BIOM_STATE_MACHINE
 #endif //(INCLUDE_UPROJ_MIT_DLEG && BOARD_TYPE_FLEXSEA_MANAGE) || BOARD_TYPE_FLEXSEA_PLAN
